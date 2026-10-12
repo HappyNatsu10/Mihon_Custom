@@ -35,13 +35,15 @@ android {
     namespace = "eu.kanade.tachiyomi"
 
     defaultConfig {
-        applicationId = "app.mihon"
+        // CUSTOM: Changed application ID to avoid collision with official Mihon
+        applicationId = "app.mihon.custom"
 
         versionCode = 37
         versionName = "0.21.1"
 
-        buildConfigField("boolean", "TELEMETRY_INCLUDED", "${Config.includeTelemetry}")
-        buildConfigField("boolean", "UPDATER_ENABLED", "${Config.enableUpdater}")
+        // CUSTOM: Telemetry and updater disabled in custom personal fork
+        buildConfigField("boolean", "TELEMETRY_INCLUDED", "false")
+        buildConfigField("boolean", "UPDATER_ENABLED", "false")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
