@@ -33,7 +33,7 @@ SELECT
     lastPageRead, sourceId, favorite, thumbnailUrl, coverLastModified, dateUpload, dateFetch,
     excludedScanlator
 FROM updatesView
-WHERE dateUpload > :after
+WHERE (:after IS NULL OR dateUpload > :after)
 AND (:read IS NULL OR read = :read)
 -- Started means some progress but not finished, Read means finished chapter, thus:
 AND (
@@ -80,7 +80,7 @@ SELECT
     excludedScanlator
 FROM updatesView
 WHERE read = 1
-AND dateUpload > :after
+AND (:after IS NULL OR dateUpload > :after)
 ORDER BY dateFetch DESC
 LIMIT :limit;
 
@@ -91,6 +91,6 @@ SELECT
     excludedScanlator
 FROM updatesView
 WHERE read = 0
-AND dateUpload > :after
+AND (:after IS NULL OR dateUpload > :after)
 ORDER BY dateFetch DESC
 LIMIT :limit;

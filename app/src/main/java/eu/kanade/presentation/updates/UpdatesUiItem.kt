@@ -1,5 +1,6 @@
 package eu.kanade.presentation.updates
 
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -8,11 +9,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -23,6 +26,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -36,8 +40,10 @@ import eu.kanade.presentation.manga.components.DotSeparatorText
 import eu.kanade.presentation.manga.components.MangaCover
 import eu.kanade.presentation.util.relativeTimeSpanString
 import eu.kanade.tachiyomi.data.download.model.Download
+import eu.kanade.tachiyomi.ui.updates.UpdatesGrouping
 import eu.kanade.tachiyomi.ui.updates.UpdatesItem
 import mihon.icons.materialsymbols.MaterialSymbols
+import mihon.icons.materialsymbols.rounded.KeyboardArrowRight
 import mihon.icons.materialsymbols.roundedfilled.Bookmark
 import mihon.icons.materialsymbols.roundedfilled.Circle
 import tachiyomi.domain.updates.model.UpdatesWithRelations
@@ -82,18 +88,22 @@ internal fun LazyListScope.updatesUiItems(
     onClickCover: (UpdatesItem) -> Unit,
     onClickUpdate: (UpdatesItem) -> Unit,
     onDownloadChapter: (List<UpdatesItem>, ChapterDownloadAction) -> Unit,
+    onToggleExpand: (String) -> Unit = {},
+    onGroupSelected: (List<UpdatesItem>, Boolean) -> Unit = { _, _ -> },
 ) {
     items(
         items = uiModels,
         contentType = {
             when (it) {
                 is UpdatesUiModel.Header -> "header"
+                is UpdatesUiModel.Group -> "group"
                 is UpdatesUiModel.Item -> "item"
             }
         },
         key = {
             when (it) {
                 is UpdatesUiModel.Header -> "updatesHeader-${it.hashCode()}"
+                is UpdatesUiModel.Group -> it.key
                 is UpdatesUiModel.Item -> "updates-${it.item.update.mangaId}-${it.item.update.chapterId}"
             }
         },
@@ -105,10 +115,34 @@ internal fun LazyListScope.updatesUiItems(
                     text = relativeDateText(item.date),
                 )
             }
+            is UpdatesUiModel.Group -> {
+                UpdatesGroupUiItem(
+                    modifier = Modifier.animateItem(),
+                    group = item,
+                    selected = item.allSelected,
+                    partiallySelected = item.partiallySelected,
+                    onToggleExpand = { onToggleExpand(item.key) },
+                    onClick = {
+                        when {
+                            selectionMode -> onGroupSelected(item.items, !item.allSelected)
+                            else -> onToggleExpand(item.key)
+                        }
+                    },
+                    onLongClick = {
+                        onGroupSelected(item.items, true)
+                    },
+                    onClickCover = { onClickCover(item.representativeItem) }.takeIf { !selectionMode },
+                    onDownloadGroup = { action: ChapterDownloadAction ->
+                        onDownloadChapter(item.items, action)
+                    }.takeIf { !selectionMode },
+                )
+            }
             is UpdatesUiModel.Item -> {
                 val updatesItem = item.item
                 UpdatesUiItem(
-                    modifier = Modifier.animateItem(),
+                    modifier = Modifier
+                        .animateItem()
+                        .then(if (item.isChildOfGroup) Modifier.padding(start = 16.dp) else Modifier),
                     update = updatesItem.update,
                     selected = updatesItem.selected,
                     readProgress = updatesItem.update.lastPageRead
@@ -136,6 +170,124 @@ internal fun LazyListScope.updatesUiItems(
                     downloadProgressProvider = updatesItem.downloadProgressProvider,
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun UpdatesGroupUiItem(
+    group: UpdatesUiModel.Group,
+    selected: Boolean,
+    partiallySelected: Boolean,
+    onToggleExpand: () -> Unit,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    onClickCover: (() -> Unit)?,
+    onDownloadGroup: ((ChapterDownloadAction) -> Unit)?,
+    modifier: Modifier = Modifier,
+) {
+    val haptic = LocalHapticFeedback.current
+    val representative = group.representativeItem
+    val textAlpha = if (group.items.all { it.update.read }) DISABLED_ALPHA else 1f
+    val rotation by animateFloatAsState(targetValue = if (group.expanded) 90f else 0f, label = "groupChevron")
+
+    Row(
+        modifier = modifier
+            .selectedBackground(selected)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = {
+                    onLongClick()
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                },
+            )
+            .height(56.dp)
+            .padding(horizontal = MaterialTheme.padding.medium),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        MangaCover.Square(
+            modifier = Modifier
+                .padding(vertical = 6.dp)
+                .fillMaxHeight(),
+            data = representative.update.coverData,
+            onClick = onClickCover,
+        )
+
+        Column(
+            modifier = Modifier
+                .padding(horizontal = MaterialTheme.padding.medium)
+                .weight(1f),
+        ) {
+            Text(
+                text = representative.update.mangaTitle,
+                maxLines = 1,
+                style = MaterialTheme.typography.bodyMedium,
+                color = LocalContentColor.current.copy(alpha = textAlpha),
+                overflow = TextOverflow.Ellipsis,
+            )
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (group.hasUnread) {
+                    Icon(
+                        imageVector = MaterialSymbols.RoundedFilled.Circle,
+                        contentDescription = stringResource(MR.strings.unread),
+                        modifier = Modifier
+                            .height(8.dp)
+                            .padding(end = 4.dp),
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                Text(
+                    text = UpdatesGrouping.formatGroupSubtitle(group.items),
+                    maxLines = 1,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = LocalContentColor.current.copy(alpha = textAlpha),
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+            }
+        }
+
+        if (group.downloadedCount > 0 && group.downloadedCount < group.count) {
+            Text(
+                text = "${group.downloadedCount}/${group.count}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(end = 4.dp),
+            )
+        }
+
+        ChapterDownloadIndicator(
+            enabled = onDownloadGroup != null,
+            modifier = Modifier.padding(start = 2.dp, end = 2.dp),
+            downloadStateProvider = {
+                when {
+                    group.downloadedCount == group.count -> Download.State.DOWNLOADED
+                    group.items.any { it.downloadStateProvider() == Download.State.DOWNLOADING } -> Download.State.DOWNLOADING
+                    group.items.any { it.downloadStateProvider() == Download.State.QUEUE } -> Download.State.QUEUE
+                    else -> Download.State.NOT_DOWNLOADED
+                }
+            },
+            downloadProgressProvider = { 0 },
+            onClick = {
+                if (group.downloadedCount == group.count) {
+                    onDownloadGroup?.invoke(ChapterDownloadAction.DELETE)
+                } else {
+                    onDownloadGroup?.invoke(ChapterDownloadAction.START)
+                }
+            },
+        )
+
+        IconButton(
+            onClick = onToggleExpand,
+            modifier = Modifier.size(32.dp),
+        ) {
+            Icon(
+                imageVector = MaterialSymbols.Rounded.KeyboardArrowRight,
+                contentDescription = null,
+                modifier = Modifier.rotate(rotation),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

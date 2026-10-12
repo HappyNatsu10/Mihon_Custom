@@ -78,6 +78,8 @@ data object UpdatesTab : Tab {
             onCalendarClicked = { navigator.push(UpcomingScreen()) },
             onFilterClicked = viewModel::showFilterDialog,
             hasActiveFilters = state.hasActiveFilters,
+            onToggleExpand = viewModel::toggleExpandGroup,
+            onGroupSelected = viewModel::toggleGroupSelection,
         )
 
         val onDismissDialog = { viewModel.setDialog(null) }

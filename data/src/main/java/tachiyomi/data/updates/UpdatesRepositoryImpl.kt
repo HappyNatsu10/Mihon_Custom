@@ -22,16 +22,17 @@ class UpdatesRepositoryImpl(
     private val database: Database,
 ) : UpdatesRepository {
 
+    // CUSTOM: after is nullable to support full updates history
     override suspend fun awaitWithRead(
         read: Boolean,
-        after: Instant,
+        after: Instant?,
         limit: Long,
     ): List<UpdatesWithRelations> {
         return getUpdatesByReadStatus(read = read, after = after, limit = limit).awaitAsList()
     }
 
     override fun subscribeAll(
-        after: Instant,
+        after: Instant?,
         limit: Long,
         unread: Boolean?,
         started: Boolean?,
@@ -59,13 +60,13 @@ class UpdatesRepositoryImpl(
 
     override fun subscribeWithRead(
         read: Boolean,
-        after: Instant,
+        after: Instant?,
         limit: Long,
     ): Flow<List<UpdatesWithRelations>> {
         return getUpdatesByReadStatus(read = read, after = after, limit = limit).subscribeToList()
     }
 
-    private fun getUpdatesByReadStatus(read: Boolean, after: Instant, limit: Long): Query<UpdatesWithRelations> {
+    private fun getUpdatesByReadStatus(read: Boolean, after: Instant?, limit: Long): Query<UpdatesWithRelations> {
         return if (read) {
             database.updatesViewQueries.getReadUpdates(
                 after = after,

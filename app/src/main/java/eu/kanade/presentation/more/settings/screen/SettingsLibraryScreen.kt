@@ -24,6 +24,7 @@ import kotlinx.coroutines.launch
 import mihon.app.di.appGraph
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.library.service.LibraryPreferences
+import tachiyomi.domain.updates.service.UpdatesPreferences
 import tachiyomi.domain.library.service.LibraryPreferences.Companion.DEVICE_CHARGING
 import tachiyomi.domain.library.service.LibraryPreferences.Companion.DEVICE_NETWORK_NOT_METERED
 import tachiyomi.domain.library.service.LibraryPreferences.Companion.DEVICE_ONLY_ON_WIFI
@@ -49,11 +50,13 @@ object SettingsLibraryScreen : SearchableSettings {
         val context = LocalContext.current
         val getCategories = remember { context.appGraph.getCategories }
         val libraryPreferences = remember { context.appGraph.libraryPreferences }
+        val updatesPreferences = remember { context.appGraph.updatesPreferences }
         val allCategories by getCategories.subscribe().collectAsState(initial = emptyList())
 
         return listOf(
             getCategoriesGroup(LocalNavigator.currentOrThrow, allCategories, libraryPreferences),
             getGlobalUpdateGroup(allCategories, libraryPreferences),
+            getUpdatesTabGroup(updatesPreferences),
             getBehaviorGroup(libraryPreferences),
         )
     }
@@ -257,6 +260,27 @@ object SettingsLibraryScreen : SearchableSettings {
                 Preference.PreferenceItem.SwitchPreference(
                     preference = libraryPreferences.hideMissingChapters,
                     title = stringResource(MR.strings.pref_hide_missing_chapter_indicators),
+                ),
+            ),
+        )
+    }
+
+    @Composable
+    private fun getUpdatesTabGroup(
+        updatesPreferences: UpdatesPreferences,
+    ): Preference.PreferenceGroup {
+        return Preference.PreferenceGroup(
+            title = stringResource(MR.strings.label_recent_updates),
+            preferenceItems = listOf(
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = updatesPreferences.keepFullUpdatesHistory,
+                    title = stringResource(MR.strings.pref_keep_full_updates_history),
+                    subtitle = stringResource(MR.strings.pref_keep_full_updates_history_summary),
+                ),
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = updatesPreferences.groupUpdatesByManga,
+                    title = stringResource(MR.strings.pref_group_updates_by_manga),
+                    subtitle = stringResource(MR.strings.pref_group_updates_by_manga_summary),
                 ),
             ),
         )

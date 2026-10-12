@@ -11,12 +11,14 @@ class GetUpdates(
     private val repository: UpdatesRepository,
 ) {
 
-    suspend fun await(read: Boolean, after: Instant): List<UpdatesWithRelations> {
-        return repository.awaitWithRead(read, after, limit = 500)
+    // CUSTOM: after is nullable and limit is configurable to support full updates history
+    suspend fun await(read: Boolean, after: Instant?, limit: Long = 500): List<UpdatesWithRelations> {
+        return repository.awaitWithRead(read, after, limit = limit)
     }
 
     fun subscribe(
-        instant: Instant,
+        instant: Instant?,
+        limit: Long = 500,
         unread: Boolean?,
         started: Boolean?,
         bookmarked: Boolean?,
@@ -26,7 +28,7 @@ class GetUpdates(
     ): Flow<List<UpdatesWithRelations>> {
         return repository.subscribeAll(
             instant,
-            limit = 500,
+            limit = limit,
             unread = unread,
             started = started,
             bookmarked = bookmarked,
@@ -36,7 +38,7 @@ class GetUpdates(
         )
     }
 
-    fun subscribe(read: Boolean, after: Instant): Flow<List<UpdatesWithRelations>> {
-        return repository.subscribeWithRead(read, after, limit = 500)
+    fun subscribe(read: Boolean, after: Instant?, limit: Long = 500): Flow<List<UpdatesWithRelations>> {
+        return repository.subscribeWithRead(read, after, limit = limit)
     }
 }

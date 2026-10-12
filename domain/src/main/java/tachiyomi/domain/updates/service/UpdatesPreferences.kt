@@ -49,4 +49,16 @@ class UpdatesPreferences(
         "pref_filter_updates_excluded_categories",
         emptyList(),
     )
+
+    // CUSTOM: Feature A - Keep full updates history (no 3-month cutoff, no 500-limit)
+    val keepFullUpdatesHistory: Preference<Boolean> = preferenceStore.getBoolean(
+        "pref_keep_full_updates_history",
+        true,
+    )
+
+    // CUSTOM: Feature B - Group updates by manga
+    val groupUpdatesByManga: Preference<Boolean> = preferenceStore.getBoolean(
+        "pref_group_updates_by_manga",
+        true,
+    )
 }

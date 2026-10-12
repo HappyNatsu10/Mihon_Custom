@@ -160,13 +160,24 @@ class UpdatesViewModel(
         }
         .distinctUntilChanged()
 
+    private val expandedGroupKeys = MutableStateFlow(emptySet<String>())
+
     private val updateItems = combine(
         // needed for SQL filters (unread, started, bookmarked, etc)
         getUpdatesItemPreferenceFlow()
             .distinctUntilChanged()
             .flatMapLatest {
+                // CUSTOM: Feature A - If keepFullUpdatesHistory is enabled, do not filter by 3 months or limit to 500
+                val after = if (it.keepFullUpdatesHistory) {
+                    null
+                } else {
+                    Clock.System.now().minus(3, DateTimeUnit.MONTH, TimeZone.currentSystemDefault())
+                }
+                val limit = if (it.keepFullUpdatesHistory) -1L else 500L
+
                 getUpdates.subscribe(
-                    Clock.System.now().minus(3, DateTimeUnit.MONTH, TimeZone.currentSystemDefault()),
+                    after,
+                    limit = limit,
                     unread = it.filterUnread.toBooleanOrNull(),
                     started = it.filterStarted.toBooleanOrNull(),
                     bookmarked = it.filterBookmarked.toBooleanOrNull(),
@@ -194,8 +205,8 @@ class UpdatesViewModel(
         selectedChapterIds,
         queuedDownloadStates.pausedWhileUnsubscribed(),
         dialog,
-        hasActiveFilters,
-    ) { items, selectedIds, downloads, dialog, hasActiveFilters ->
+        combine(hasActiveFilters, getUpdatesItemPreferenceFlow(), expandedGroupKeys, ::Triple),
+    ) { items, selectedIds, downloads, dialog, (hasActiveFilters, itemPreferences, expandedKeys) ->
         State(
             isLoading = items == null,
             hasActiveFilters = hasActiveFilters,
@@ -211,6 +222,8 @@ class UpdatesViewModel(
                 )
             },
             dialog = dialog,
+            groupUpdatesByManga = itemPreferences.groupUpdatesByManga,
+            expandedGroupKeys = expandedKeys,
         )
     }
         .flowOn(Dispatchers.Default)
@@ -466,6 +479,8 @@ class UpdatesViewModel(
             updatesPreferences.filterExcludedScanlators.changes(),
             updatesPreferences.filterIncludedCategories.changes(),
             updatesPreferences.filterExcludedCategories.changes(),
+            updatesPreferences.keepFullUpdatesHistory.changes(),
+            updatesPreferences.groupUpdatesByManga.changes(),
         ) {
             @Suppress("UNCHECKED_CAST")
             ItemPreferences(
@@ -476,12 +491,28 @@ class UpdatesViewModel(
                 filterExcludedScanlators = it[4] as Boolean,
                 filterIncludedCategories = it[5] as List<Long>,
                 filterExcludedCategories = it[6] as List<Long>,
+                keepFullUpdatesHistory = it[7] as Boolean,
+                groupUpdatesByManga = it[8] as Boolean,
             )
         }
     }
 
     fun showFilterDialog() {
         dialog.update { Dialog.FilterSheet }
+    }
+
+    // CUSTOM: Feature B - Toggle group expansion and group selection
+    fun toggleExpandGroup(groupKey: String) {
+        expandedGroupKeys.update { current ->
+            if (groupKey in current) current - groupKey else current + groupKey
+        }
+    }
+
+    fun toggleGroupSelection(groupItems: List<UpdatesItem>, selected: Boolean) {
+        val chapterIds = groupItems.map { it.update.chapterId }
+        selectedChapterIds.update { current ->
+            if (selected) current + chapterIds else current - chapterIds.toSet()
+        }
     }
 
     @Immutable
@@ -493,6 +524,8 @@ class UpdatesViewModel(
         val filterExcludedScanlators: Boolean,
         val filterIncludedCategories: List<Long>,
         val filterExcludedCategories: List<Long>,
+        val keepFullUpdatesHistory: Boolean,
+        val groupUpdatesByManga: Boolean,
     )
 
     @Immutable
@@ -501,22 +534,18 @@ class UpdatesViewModel(
         val hasActiveFilters: Boolean = false,
         val items: List<UpdatesItem> = listOf(),
         val dialog: Dialog? = null,
+        val groupUpdatesByManga: Boolean = true,
+        val expandedGroupKeys: Set<String> = emptySet(),
     ) {
         val selected = items.filter { it.selected }
         val selectionMode = selected.isNotEmpty()
 
         fun getUiModel(): List<UpdatesUiModel> {
-            return items
-                .map { UpdatesUiModel.Item(it) }
-                .insertSeparators { before, after ->
-                    val beforeDate = before?.item?.update?.dateFetch?.toLocalDate()
-                    val afterDate = after?.item?.update?.dateFetch?.toLocalDate()
-                    when {
-                        beforeDate != afterDate && afterDate != null -> UpdatesUiModel.Header(afterDate)
-                        // Return null to avoid adding a separator between two items.
-                        else -> null
-                    }
-                }
+            return UpdatesGrouping.groupUpdates(
+                items = items,
+                groupByManga = groupUpdatesByManga,
+                expandedGroupKeys = expandedGroupKeys,
+            )
         }
     }
 

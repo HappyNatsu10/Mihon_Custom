@@ -40,6 +40,7 @@ import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.setting.track.BaseOAuthLoginActivity
 import eu.kanade.tachiyomi.ui.webview.WebViewActivity
 import eu.kanade.tachiyomi.util.CrashLogUtil
+import tachiyomi.domain.updates.service.UpdatesPreferences
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.protobuf.ProtoBuf
 import mihon.core.metro.IsDebugBuild
@@ -93,6 +94,7 @@ interface AppGraph : ViewModelGraph {
     val privacyPreferences: PrivacyPreferences
     val securityPreferences: SecurityPreferences
     val downloadPreferences: DownloadPreferences
+    val updatesPreferences: UpdatesPreferences
 
     val crashLogUtil: CrashLogUtil
 

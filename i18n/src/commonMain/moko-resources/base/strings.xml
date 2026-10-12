@@ -1088,4 +1088,47 @@
     <string name="donationCampaign.paragraph3">Regardless, Mihon will continue to be maintained by me and the volunteers, and it will stay open source.</string>
     <string name="donationCampaign.contactPlatform">Discord</string>
     <string name="donationCampaign.dismiss">Dismiss</string>
+
+    <!-- CUSTOM: Feature A - Show all updates -->
+    <string name="pref_keep_full_updates_history">Keep full updates history</string>
+    <string name="pref_keep_full_updates_history_summary">Show complete update history without 3-month cutoff or item limits</string>
+
+    <!-- CUSTOM: Feature B - Group updates -->
+    <string name="pref_group_updates_by_manga">Group updates by manga</string>
+    <string name="pref_group_updates_by_manga_summary">Collapse multiple updates for the same manga on the same date into a single group</string>
+    <string name="updates_group_chapters">%1$d new chapters</string>
+    <string name="updates_group_chapters_range">%1$d new chapters · %2$s</string>
+    <string name="updates_group_downloaded">%1$d/%2$d downloaded</string>
+    <string name="updates_mark_group_read">Mark group read</string>
+    <string name="updates_download_group">Download all</string>
+
+    <!-- CUSTOM: Feature C - In-reader translator -->
+    <string name="action_translate">Translate</string>
+    <string name="action_translate_original">Original</string>
+    <string name="action_translate_translated">Translated</string>
+    <string name="pref_reader_translation">Translation</string>
+    <string name="pref_enable_translation">Enable translation</string>
+    <string name="pref_enable_translation_summary">Translate manga page text while reading</string>
+    <string name="pref_auto_translate">Auto-translate pages</string>
+    <string name="pref_auto_translate_summary">Automatically translate pages as they load (costs time, data and battery)</string>
+    <string name="pref_translation_provider">Provider</string>
+    <string name="pref_translation_provider_mlkit">On-device (Google ML Kit)</string>
+    <string name="pref_translation_provider_mlkit_summary">Free, works offline; runs entirely on your device with no data sent externally</string>
+    <string name="pref_translation_provider_llm">LLM Vision (Gemini)</string>
+    <string name="pref_translation_provider_llm_summary">High quality manga OCR and translation using Google Gemini vision API</string>
+    <string name="pref_translation_source_lang">Source language</string>
+    <string name="pref_translation_target_lang">Target language</string>
+    <string name="pref_translation_api_key">API key</string>
+    <string name="pref_translation_api_key_summary">API key for LLM Vision provider</string>
+    <string name="pref_translation_llm_model">Gemini model</string>
+    <string name="pref_clear_translation_cache">Clear translation cache</string>
+    <string name="pref_clear_translation_cache_summary">Delete cached translated pages (%s used)</string>
+    <string name="pref_translation_overlay_opacity">Overlay background opacity</string>
+    <string name="pref_translation_font_size">Overlay text size</string>
+    <string name="translation_cache_cleared">Translation cache cleared</string>
+    <string name="translation_progress">Translating page…</string>
+    <string name="translation_no_text">No text detected on page</string>
+    <string name="translation_error">Translation failed: %s</string>
+    <string name="translation_privacy_title">Third-party translation</string>
+    <string name="translation_privacy_warning">Page images will be sent to Google Gemini API for OCR and translation. Do you want to proceed?</string>
 </resources>

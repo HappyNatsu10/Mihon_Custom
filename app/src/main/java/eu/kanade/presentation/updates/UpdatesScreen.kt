@@ -63,6 +63,8 @@ fun UpdateScreen(
     onOpenChapter: (UpdatesItem) -> Unit,
     onFilterClicked: () -> Unit,
     hasActiveFilters: Boolean,
+    onToggleExpand: (String) -> Unit = {},
+    onGroupSelected: (List<UpdatesItem>, Boolean) -> Unit = { _, _ -> },
 ) {
     BackHandler(enabled = state.selectionMode) {
         onSelectAll(false)
@@ -143,6 +145,8 @@ fun UpdateScreen(
                                 onClickCover = onClickCover,
                                 onClickUpdate = onOpenChapter,
                                 onDownloadChapter = onDownloadChapter,
+                                onToggleExpand = onToggleExpand,
+                                onGroupSelected = onGroupSelected,
                             )
                         }
                     }
@@ -249,5 +253,24 @@ private fun UpdatesBottomBar(
 
 sealed interface UpdatesUiModel {
     data class Header(val date: LocalDate) : UpdatesUiModel
-    data class Item(val item: UpdatesItem) : UpdatesUiModel
+    data class Item(
+        val item: UpdatesItem,
+        val isChildOfGroup: Boolean = false,
+    ) : UpdatesUiModel
+
+    // CUSTOM: Feature B - Group row representing multiple updates for the same manga on the same date
+    data class Group(
+        val mangaId: Long,
+        val date: LocalDate,
+        val items: List<UpdatesItem>,
+        val expanded: Boolean,
+    ) : UpdatesUiModel {
+        val key: String get() = "group:$mangaId:$date"
+        val count: Int get() = items.size
+        val hasUnread: Boolean get() = items.any { !it.update.read }
+        val allSelected: Boolean get() = items.all { it.selected }
+        val partiallySelected: Boolean get() = !allSelected && items.any { it.selected }
+        val downloadedCount: Int get() = items.count { it.downloadStateProvider() == eu.kanade.tachiyomi.data.download.model.Download.State.DOWNLOADED }
+        val representativeItem: UpdatesItem get() = items.first()
+    }
 }
