@@ -64,26 +64,30 @@ class DefaultVideoChapterDetector(
             return@withContext result
         }
 
+        // Fast check on all pages: if any page URL already has a video extension
+        val hasAnyVideoExt = pages.any { page ->
+            val url = page.imageUrl ?: page.url
+            url.isNotBlank() && hasVideoExtension(url)
+        }
+
         val firstPage = pages.first()
         val firstUrl = resolvePageUrl(source, firstPage)
-        if (firstUrl == null) {
+        val firstHeaders = if (firstUrl != null) buildEffectiveHeaders(source, firstUrl) else source.headers
+
+        val isVideoChapter = hasAnyVideoExt || (firstUrl != null && (
+            hasVideoExtension(firstUrl) || probeIsVideo(firstUrl, firstHeaders, networkHelper.client)
+        )) || (pages.size <= 3 && pages.any { page ->
+            val u = resolvePageUrl(source, page)
+            u != null && (hasVideoExtension(u) || probeIsVideo(u, buildEffectiveHeaders(source, u), networkHelper.client))
+        })
+
+        if (!isVideoChapter) {
             val result = VideoDetectionResult.NotVideo
             sessionCache[chapter.id] = result
             return@withContext result
         }
 
-        val firstHeaders = source.headers
-
-        val isFirstPageVideo = hasVideoExtension(firstUrl) ||
-            probeIsVideo(firstUrl, firstHeaders, networkHelper.client)
-
-        if (!isFirstPageVideo) {
-            val result = VideoDetectionResult.NotVideo
-            sessionCache[chapter.id] = result
-            return@withContext result
-        }
-
-        // First page is video: collect all video pages in order into playlist
+        // First page or chapter contains video: collect all video pages in order into playlist
         val playlist = mutableListOf<VideoTrack>()
         pages.forEachIndexed { index, page ->
             val url = resolvePageUrl(source, page)
@@ -91,11 +95,11 @@ class DefaultVideoChapterDetector(
                 logcat(LogPriority.WARN) { "Skipping unresolvable page in video chapter at index $index" }
                 return@forEachIndexed
             }
-            val headers = source.headers
+            val effectiveHeaders = buildEffectiveHeaders(source, url)
 
-            // If subsequent pages have video extension or match probe
-            if (hasVideoExtension(url) || probeIsVideo(url, headers, networkHelper.client)) {
-                val headersMap = headers.names().associateWith { headers[it].orEmpty() }
+            // If page has video extension or matches probe, or single-page video post
+            if (hasVideoExtension(url) || probeIsVideo(url, effectiveHeaders, networkHelper.client) || pages.size == 1) {
+                val headersMap = effectiveHeaders.names().associateWith { effectiveHeaders[it].orEmpty() }
                 playlist.add(VideoTrack(index, url, headersMap))
             } else {
                 logcat(LogPriority.WARN) { "Skipping non-video page in video chapter at index $index: $url" }
@@ -117,7 +121,11 @@ class DefaultVideoChapterDetector(
         if (!existing.isNullOrBlank()) return existing
 
         return try {
-            source.getImageUrl(page)
+            val resolved = source.getImageUrl(page)
+            if (!resolved.isNullOrBlank()) {
+                page.imageUrl = resolved
+            }
+            resolved
         } catch (e: Throwable) {
             logcat(LogPriority.DEBUG) { "Failed to resolve image URL for page: ${e.message}" }
             page.url.takeIf { it.isNotBlank() }
@@ -126,7 +134,7 @@ class DefaultVideoChapterDetector(
 
     companion object {
         val VIDEO_EXTENSIONS = setOf(
-            "mp4", "m4v", "webm", "mkv", "mov", "m3u8", "mpd",
+            "mp4", "m4v", "webm", "mkv", "mov", "m3u8", "mpd", "ts", "flv", "avi", "wmv", "3gp",
         )
 
         val PROBE_CONTENT_TYPES = setOf(
@@ -136,16 +144,61 @@ class DefaultVideoChapterDetector(
         )
 
         fun hasVideoExtension(url: String): Boolean {
-            val cleanUrl = url.substringBefore('?').substringBefore('#')
-            val ext = cleanUrl.substringAfterLast('.', "").lowercase()
-            return ext in VIDEO_EXTENSIONS
+            if (url.isBlank()) return false
+            val cleanUrl = url.substringBefore('?').substringBefore('#').lowercase()
+            val ext = cleanUrl.substringAfterLast('.', "")
+            if (ext in VIDEO_EXTENSIONS) return true
+
+            // URL path pattern checks (e.g. DeviantArt /v/mp4/ or Pixiv video endpoints)
+            if (cleanUrl.contains("/v/mp4/") || cleanUrl.contains("/video/") || cleanUrl.contains("/mp4/")) {
+                return true
+            }
+
+            // Query parameter or embedded format checks
+            val lowerFullUrl = url.lowercase()
+            for (videoExt in VIDEO_EXTENSIONS) {
+                if (lowerFullUrl.contains(".$videoExt?") ||
+                    lowerFullUrl.contains(".$videoExt&") ||
+                    lowerFullUrl.contains("format=$videoExt") ||
+                    lowerFullUrl.contains("ext=$videoExt") ||
+                    lowerFullUrl.endsWith(".$videoExt")
+                ) {
+                    return true
+                }
+            }
+            return false
+        }
+
+        fun buildEffectiveHeaders(source: HttpSource, url: String): Headers {
+            val builder = source.headers.newBuilder()
+            val hasReferer = source.headers.names().any { it.equals("referer", ignoreCase = true) }
+            if (!hasReferer) {
+                val lowerUrl = url.lowercase()
+                when {
+                    lowerUrl.contains("pximg.net") || lowerUrl.contains("pixiv") -> {
+                        builder.set("Referer", "https://www.pixiv.net/")
+                    }
+                    lowerUrl.contains("wixmp.com") || lowerUrl.contains("deviantart") -> {
+                        builder.set("Referer", "https://www.deviantart.com/")
+                    }
+                    else -> {
+                        val baseUrl = runCatching { source.baseUrl }.getOrNull()
+                        if (!baseUrl.isNullOrBlank()) {
+                            builder.set("Referer", baseUrl)
+                        }
+                    }
+                }
+            }
+            return builder.build()
         }
 
         fun probeIsVideo(url: String, headers: Headers, client: OkHttpClient): Boolean {
             val probeClient = client.newBuilder()
-                .callTimeout(5, TimeUnit.SECONDS)
-                .connectTimeout(5, TimeUnit.SECONDS)
-                .readTimeout(5, TimeUnit.SECONDS)
+                .callTimeout(6, TimeUnit.SECONDS)
+                .connectTimeout(6, TimeUnit.SECONDS)
+                .readTimeout(6, TimeUnit.SECONDS)
+                .followRedirects(true)
+                .followSslRedirects(true)
                 .build()
 
             // 1. Probe with HEAD request
@@ -161,6 +214,10 @@ class DefaultVideoChapterDetector(
                         if (contentType.startsWith("video/") || contentType in PROBE_CONTENT_TYPES) {
                             return true
                         }
+                        val contentDisposition = response.header("Content-Disposition")?.lowercase().orEmpty()
+                        if (VIDEO_EXTENSIONS.any { contentDisposition.contains(".$it") }) {
+                            return true
+                        }
                         if (contentType.startsWith("image/")) {
                             return false
                         }
@@ -170,18 +227,24 @@ class DefaultVideoChapterDetector(
                 logcat(LogPriority.DEBUG) { "HEAD probe failed for $url: ${e.message}" }
             }
 
-            // 2. Fall back to Range: bytes=0-0 GET request
+            // 2. Fall back to Range: bytes=0-1024 GET request
             try {
                 val rangeReq = Request.Builder()
                     .url(url)
                     .headers(headers)
-                    .header("Range", "bytes=0-0")
+                    .header("Range", "bytes=0-1024")
                     .get()
                     .build()
                 probeClient.newCall(rangeReq).execute().use { response ->
-                    val contentType = response.header("Content-Type")?.lowercase()?.substringBefore(';')?.trim().orEmpty()
-                    if (contentType.startsWith("video/") || contentType in PROBE_CONTENT_TYPES) {
-                        return true
+                    if (response.isSuccessful || response.code == 206) {
+                        val contentType = response.header("Content-Type")?.lowercase()?.substringBefore(';')?.trim().orEmpty()
+                        if (contentType.startsWith("video/") || contentType in PROBE_CONTENT_TYPES) {
+                            return true
+                        }
+                        val contentDisposition = response.header("Content-Disposition")?.lowercase().orEmpty()
+                        if (VIDEO_EXTENSIONS.any { contentDisposition.contains(".$it") }) {
+                            return true
+                        }
                     }
                 }
             } catch (e: Throwable) {

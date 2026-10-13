@@ -56,6 +56,24 @@ class VideoChapterDetectorTest {
     }
 
     @Test
+    fun `hasVideoExtension recognizes DeviantArt and Pixiv video paths and query parameters`() {
+        DefaultVideoChapterDetector.hasVideoExtension("https://images-wixmp.com/v/mp4/custom_animation.mp4?token=xyz") shouldBe true
+        DefaultVideoChapterDetector.hasVideoExtension("https://images-wixmp.com/v/mp4/deviant_video") shouldBe true
+        DefaultVideoChapterDetector.hasVideoExtension("https://i.pximg.net/video/sample.mp4?lang=en") shouldBe true
+        DefaultVideoChapterDetector.hasVideoExtension("https://i.pximg.net/ugoira/sample.webm") shouldBe true
+        DefaultVideoChapterDetector.hasVideoExtension("https://stream.example.com/watch?format=mp4") shouldBe true
+    }
+
+    @Test
+    fun `buildEffectiveHeaders injects Pixiv and DeviantArt referers when missing`() {
+        val pixivHeaders = DefaultVideoChapterDetector.buildEffectiveHeaders(source, "https://i.pximg.net/img-original/img/sample.mp4")
+        pixivHeaders["Referer"] shouldBe "https://www.pixiv.net/"
+
+        val daHeaders = DefaultVideoChapterDetector.buildEffectiveHeaders(source, "https://images-wixmp.com/v/mp4/sample.mp4")
+        daHeaders["Referer"] shouldBe "https://www.deviantart.com/"
+    }
+
+    @Test
     fun `hasVideoExtension returns false for image formats`() {
         DefaultVideoChapterDetector.hasVideoExtension("https://cdn.example.com/001.jpg") shouldBe false
         DefaultVideoChapterDetector.hasVideoExtension("https://cdn.example.com/002.png") shouldBe false

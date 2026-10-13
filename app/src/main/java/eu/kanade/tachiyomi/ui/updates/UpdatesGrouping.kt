@@ -3,6 +3,7 @@ package eu.kanade.tachiyomi.ui.updates
 import eu.kanade.presentation.updates.UpdatesUiModel
 import kotlinx.datetime.LocalDate
 import eu.kanade.tachiyomi.util.lang.toLocalDate
+import kotlin.time.Instant
 
 // CUSTOM: Feature B - Pure grouping logic for Updates tab
 object UpdatesGrouping {
@@ -10,9 +11,27 @@ object UpdatesGrouping {
     private val chapterPrefixRegex = Regex("""(?i)(?:ch(?:apter)?|ep(?:isode)?)\.?\s*([0-9]+(?:\.[0-9]+)?)""")
     private val numberRegex = Regex("""\b([0-9]+(?:\.[0-9]+)?)\b""")
 
+    private val chapterNumberCache = java.util.concurrent.ConcurrentHashMap<String, Double>()
+    private val nullNumberCache = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
+    private val dateCache = java.util.concurrent.ConcurrentHashMap<Instant, LocalDate>()
+
     fun parseChapterNumber(name: String): Double? {
+        if (nullNumberCache.contains(name)) return null
+        val cached = chapterNumberCache[name]
+        if (cached != null) return cached
+
         val match = chapterPrefixRegex.find(name) ?: numberRegex.find(name)
-        return match?.groupValues?.get(1)?.toDoubleOrNull()
+        val num = match?.groupValues?.get(1)?.toDoubleOrNull()
+        if (num != null) {
+            chapterNumberCache[name] = num
+        } else {
+            nullNumberCache.add(name)
+        }
+        return num
+    }
+
+    private fun getCachedDate(instant: Instant): LocalDate {
+        return dateCache.computeIfAbsent(instant) { it.toLocalDate() }
     }
 
     /**
@@ -61,7 +80,7 @@ object UpdatesGrouping {
         // 1. Partition into date sections while preserving date ordering
         val dateSections = LinkedHashMap<LocalDate, MutableList<UpdatesItem>>()
         for (item in items) {
-            val date = item.update.dateFetch.toLocalDate()
+            val date = getCachedDate(item.update.dateFetch)
             dateSections.getOrPut(date) { mutableListOf() }.add(item)
         }
 

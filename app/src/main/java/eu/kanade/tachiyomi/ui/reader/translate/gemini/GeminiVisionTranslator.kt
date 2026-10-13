@@ -38,13 +38,37 @@ class GeminiVisionTranslator(
             throw IllegalArgumentException("Gemini API key is required. Please set your API key in Reader Settings → Translation.")
         }
 
-        val model = modelProvider().trim().ifBlank { "gemini-1.5-flash" }
+        val configuredModel = modelProvider().trim()
+            .removePrefix("models/")
+            .removePrefix("/models/")
+            .ifBlank { "gemini-1.5-flash" }
+
+        val cleanModel = when (configuredModel) {
+            "gemini-pro", "gemini-pro-vision", "gemini-1.0-pro" -> "gemini-1.5-flash"
+            else -> configuredModel
+        }
         val customEndpoint = endpointProvider().trim()
 
-        val url = if (customEndpoint.isNotBlank()) {
-            if (customEndpoint.contains("?")) "$customEndpoint&key=$apiKey" else "$customEndpoint?key=$apiKey"
-        } else {
-            "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey"
+        fun buildUrl(modelName: String): String {
+            if (customEndpoint.isNotBlank()) {
+                val endpoint = customEndpoint.trim()
+                return when {
+                    endpoint.contains(":generateContent") -> {
+                        if (endpoint.contains("?")) "$endpoint&key=$apiKey" else "$endpoint?key=$apiKey"
+                    }
+                    endpoint.endsWith("/v1beta") || endpoint.endsWith("/v1") -> {
+                        "$endpoint/models/$modelName:generateContent?key=$apiKey"
+                    }
+                    endpoint.contains("/models/") -> {
+                        "$endpoint:generateContent?key=$apiKey"
+                    }
+                    else -> {
+                        val base = endpoint.trimEnd('/')
+                        "$base/v1beta/models/$modelName:generateContent?key=$apiKey"
+                    }
+                }
+            }
+            return "https://generativelanguage.googleapis.com/v1beta/models/$modelName:generateContent?key=$apiKey"
         }
 
         // Downscale image if large to optimize network payload
@@ -81,10 +105,11 @@ class GeminiVisionTranslator(
         }
 
         val prompt = """
-            Detect all speech bubbles, dialogue captions, and Japanese text on this manga page.
-            Translate the text into $targetLangName.
-            Return a JSON array where each object has:
-            - "box_2d": [ymin, xmin, ymax, xmax] as normalized integers from 0 to 1000 representing the bounding box
+            You are an expert manga translator, working like Google Lens.
+            1. Detect all speech bubbles, dialogue captions, and text on this manga page.
+            2. Translate all the dialogue accurately into natural, readable $targetLangName.
+            3. Return a JSON array where each object has:
+            - "box_2d": [ymin, xmin, ymax, xmax] as normalized integers from 0 to 1000 representing the bounding box of the speech bubble
             - "original_text": string
             - "translated_text": string
             Respond ONLY with the JSON array, no explanation, no markdown backticks.
@@ -111,29 +136,49 @@ class GeminiVisionTranslator(
             }
         """.trimIndent()
 
-        val request = Request.Builder()
-            .url(url)
-            .post(requestBodyJson.toRequestBody("application/json".toMediaType()))
-            .build()
+        val modelsToTry = linkedSetOf(cleanModel, "gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro")
+        var lastResponseCode = 0
+        var lastResponseBody = ""
 
-        val response = try {
-            okHttpClient.newCall(request).execute()
-        } catch (e: Exception) {
-            logcat(LogPriority.ERROR) { "Network error calling Gemini API: ${e.message}" }
-            throw IllegalStateException("Network connection failed. Please check your internet connection.", e)
-        }
+        for (tryModel in modelsToTry) {
+            val url = buildUrl(tryModel)
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("x-goog-api-key", apiKey)
+                .post(requestBodyJson.toRequestBody("application/json".toMediaType()))
+                .build()
 
-        val responseBody = response.body?.string().orEmpty()
-        if (!response.isSuccessful) {
-            val errorMsg = when (response.code) {
-                400, 403 -> "Invalid Gemini API key or unauthorized request."
-                429 -> "Gemini API rate limit exceeded."
-                else -> "Gemini API error (HTTP ${response.code}): $responseBody"
+            val response = try {
+                okHttpClient.newCall(request).execute()
+            } catch (e: Exception) {
+                logcat(LogPriority.ERROR) { "Network error calling Gemini API with model $tryModel: ${e.message}" }
+                throw IllegalStateException("Network connection failed. Please check your internet connection.", e)
             }
-            throw IllegalStateException(errorMsg)
+
+            val body = response.body?.string().orEmpty()
+            if (response.isSuccessful) {
+                return@withContext parseGeminiResponse(body, page.width, page.height)
+            }
+
+            lastResponseCode = response.code
+            lastResponseBody = body
+
+            if (response.code == 404) {
+                logcat(LogPriority.WARN) { "Model $tryModel returned 404, attempting fallback model..." }
+                continue
+            } else {
+                // If 400/403/429, don't keep trying all models needlessly
+                break
+            }
         }
 
-        parseGeminiResponse(responseBody, page.width, page.height)
+        val errorMsg = when (lastResponseCode) {
+            400, 403 -> "Invalid Gemini API key or unauthorized request."
+            404 -> "Gemini API error (HTTP 404 Not Found): The specified model is not available for this API key. Tried: ${modelsToTry.joinToString()}."
+            429 -> "Gemini API rate limit exceeded."
+            else -> "Gemini API error (HTTP $lastResponseCode): $lastResponseBody"
+        }
+        throw IllegalStateException(errorMsg)
     }
 
     private fun parseGeminiResponse(

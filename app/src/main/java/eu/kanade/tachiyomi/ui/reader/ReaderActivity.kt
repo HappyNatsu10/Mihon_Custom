@@ -515,6 +515,22 @@ class ReaderActivity : BaseActivity() {
             onOpenInWebView = ::openChapterInWebView.takeIf { isHttpSource },
             onOpenInBrowser = ::openChapterInBrowser.takeIf { isHttpSource },
             onShare = ::shareChapter.takeIf { isHttpSource },
+            // CUSTOM: Feature B - Manual Open in Video Player
+            onOpenInVideoPlayer = {
+                val manga = state.manga
+                val chapter = state.currentChapter?.chapter
+                if (manga != null && chapter != null) {
+                    startActivity(
+                        eu.kanade.tachiyomi.ui.player.PlayerActivity.newIntent(
+                            this@ReaderActivity,
+                            manga.id,
+                            chapter.id,
+                            forceVideo = true,
+                        ),
+                    )
+                    finish()
+                }
+            }.takeIf { isHttpSource },
 
             chapterNavigatorType = if (!verticalNavigator) {
                 if (state.viewer is R2LPagerViewer) {

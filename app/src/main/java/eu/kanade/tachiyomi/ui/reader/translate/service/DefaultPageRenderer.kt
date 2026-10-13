@@ -54,18 +54,28 @@ class DefaultPageRenderer(
             val text = translated.getOrNull(i)?.takeIf { it.isNotBlank() } ?: continue
             val origBox = blocks[i].boundingBox
 
-            val left = (origBox.left * scaleX).coerceIn(0f, output.width.toFloat())
-            val right = (origBox.right * scaleX).coerceIn(0f, output.width.toFloat())
+            var left = (origBox.left * scaleX).coerceIn(0f, output.width.toFloat())
+            var right = (origBox.right * scaleX).coerceIn(0f, output.width.toFloat())
             val top = (origBox.top * scaleY).coerceIn(0f, output.height.toFloat())
             val bottom = (origBox.bottom * scaleY).coerceIn(0f, output.height.toFloat())
 
-            val boxWidth = right - left
+            var boxWidth = right - left
             val boxHeight = bottom - top
-            if (boxWidth < 10f || boxHeight < 10f) continue
+            if (boxWidth < 8f || boxHeight < 8f) continue
 
-            // 1. Sample surrounding/background color to determine light vs dark bubble
+            // Google Lens technique: If original text was vertical (tall & narrow),
+            // speech bubbles are usually oval/round. Expand width so horizontal English text can fit naturally.
+            if (boxHeight > boxWidth * 1.25f) {
+                val expandedWidth = max(boxWidth, min(output.width * 0.45f, boxHeight * 0.8f))
+                val centerX = (left + right) / 2f
+                left = (centerX - expandedWidth / 2f).coerceIn(0f, output.width.toFloat())
+                right = (centerX + expandedWidth / 2f).coerceIn(0f, output.width.toFloat())
+                boxWidth = right - left
+            }
+
+            // 1. Sample interior bubble color to determine light vs dark bubble
             val isLightBackground = isLightBackground(page, origBox)
-            val alpha = (style.backgroundOpacity.coerceIn(0.1f, 1.0f) * 255).toInt()
+            val alpha = (style.backgroundOpacity.coerceIn(0.2f, 1.0f) * 255).toInt()
 
             if (isLightBackground) {
                 bgPaint.color = Color.argb(alpha, 255, 255, 255)
@@ -75,20 +85,25 @@ class DefaultPageRenderer(
                 textPaint.color = Color.WHITE
             }
 
-            // 2. Draw rounded speech-bubble background cover
-            val radius = min(boxWidth, boxHeight).coerceIn(4f, 16f) * 0.2f
-            canvas.drawRoundRect(left, top, right, bottom, radius, radius, bgPaint)
+            // 2. Draw speech bubble inpainting cover with outward padding to hide original glyphs
+            val padOutward = 3f * density
+            val coverLeft = (left - padOutward).coerceAtLeast(0f)
+            val coverRight = (right + padOutward).coerceAtMost(output.width.toFloat())
+            val coverTop = (top - padOutward).coerceAtLeast(0f)
+            val coverBottom = (bottom + padOutward).coerceAtMost(output.height.toFloat())
+            val radius = min(coverRight - coverLeft, coverBottom - coverTop).coerceIn(6f, 24f) * 0.25f
+            canvas.drawRoundRect(coverLeft, coverTop, coverRight, coverBottom, radius, radius, bgPaint)
 
-            // 3. Auto-fit and wrap translated text
-            val padding = 4f * density
-            val availWidth = max(10f, boxWidth - padding * 2f).toInt()
-            val availHeight = max(10f, boxHeight - padding * 2f)
+            // 3. Auto-fit and wrap translated text centered inside bubble
+            val innerPadding = 4f * density
+            val availWidth = max(10f, (coverRight - coverLeft) - innerPadding * 2f).toInt()
+            val availHeight = max(10f, (coverBottom - coverTop) - innerPadding * 2f)
 
             val layout = fitText(text, textPaint, availWidth, availHeight, style)
             if (layout != null) {
                 canvas.save()
-                val textX = left + padding + (availWidth - layout.width) / 2f
-                val textY = top + padding + (availHeight - layout.height) / 2f
+                val textX = coverLeft + innerPadding + (availWidth - layout.width) / 2f
+                val textY = coverTop + innerPadding + (availHeight - layout.height) / 2f
                 canvas.translate(textX, textY)
                 layout.draw(canvas)
                 canvas.restore()
@@ -102,16 +117,20 @@ class DefaultPageRenderer(
         var totalLuminance = 0.0
         var count = 0
 
-        val points = listOf(
-            Pair(box.left, box.top),
-            Pair(box.right, box.top),
-            Pair(box.left, box.bottom),
-            Pair(box.right, box.bottom),
-            Pair((box.left + box.right) / 2f, box.top),
-            Pair((box.left + box.right) / 2f, box.bottom),
+        val cx = box.centerX()
+        val cy = box.centerY()
+        val w = box.width()
+        val h = box.height()
+
+        val samplePoints = listOf(
+            Pair(cx, cy),
+            Pair(cx - w * 0.2f, cy - h * 0.2f),
+            Pair(cx + w * 0.2f, cy + h * 0.2f),
+            Pair(cx - w * 0.2f, cy + h * 0.2f),
+            Pair(cx + w * 0.2f, cy - h * 0.2f),
         )
 
-        for ((x, y) in points) {
+        for ((x, y) in samplePoints) {
             val px = x.toInt().coerceIn(0, bitmap.width - 1)
             val py = y.toInt().coerceIn(0, bitmap.height - 1)
             try {
@@ -125,7 +144,7 @@ class DefaultPageRenderer(
         }
 
         val avgLuminance = if (count > 0) totalLuminance / count else 255.0
-        return avgLuminance >= 120.0
+        return avgLuminance >= 130.0
     }
 
     private fun fitText(

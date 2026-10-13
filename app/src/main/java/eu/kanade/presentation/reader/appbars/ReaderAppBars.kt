@@ -55,6 +55,8 @@ fun ReaderAppBars(
     onOpenInWebView: (() -> Unit)?,
     onOpenInBrowser: (() -> Unit)?,
     onShare: (() -> Unit)?,
+    // CUSTOM: Feature B - Video player action
+    onOpenInVideoPlayer: (() -> Unit)? = null,
 
     chapterNavigatorType: ChapterNavigatorType,
     verticalNavigatorHeight: Float,
@@ -102,6 +104,7 @@ fun ReaderAppBars(
                 onOpenInWebView = onOpenInWebView,
                 onOpenInBrowser = onOpenInBrowser,
                 onShare = onShare,
+                onOpenInVideoPlayer = onOpenInVideoPlayer,
             )
         }
 

@@ -21,6 +21,8 @@ fun ReaderTopBar(
     onOpenInWebView: (() -> Unit)?,
     onOpenInBrowser: (() -> Unit)?,
     onShare: (() -> Unit)?,
+    // CUSTOM: Feature B - Video player action
+    onOpenInVideoPlayer: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     AppBar(
@@ -69,6 +71,14 @@ fun ReaderTopBar(
                         add(
                             AppBar.OverflowAction(
                                 title = stringResource(MR.strings.action_share),
+                                onClick = it,
+                            ),
+                        )
+                    }
+                    onOpenInVideoPlayer?.let {
+                        add(
+                            AppBar.OverflowAction(
+                                title = "Open in Video Player",
                                 onClick = it,
                             ),
                         )

@@ -22,29 +22,90 @@ import kotlin.math.min
 
 class MlKitOcr : PageOcr {
 
-    private fun getRecognizer(sourceLang: SourceLanguage): TextRecognizer {
-        return when (sourceLang) {
+    private fun createRecognizer(lang: SourceLanguage): TextRecognizer {
+        return when (lang) {
             SourceLanguage.JAPANESE -> TextRecognition.getClient(JapaneseTextRecognizerOptions.Builder().build())
             SourceLanguage.CHINESE -> TextRecognition.getClient(ChineseTextRecognizerOptions.Builder().build())
             SourceLanguage.KOREAN -> TextRecognition.getClient(KoreanTextRecognizerOptions.Builder().build())
-            SourceLanguage.AUTO, SourceLanguage.ENGLISH -> TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+            SourceLanguage.ENGLISH, SourceLanguage.AUTO -> TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
         }
     }
 
     override suspend fun recognize(page: Bitmap, sourceLang: SourceLanguage): List<TextBlock> = withContext(Dispatchers.Default) {
-        val recognizer = getRecognizer(sourceLang)
-        try {
-            if (page.height > 2500) {
-                recognizeTallStrip(recognizer, page)
-            } else {
-                recognizeBitmap(recognizer, page, offsetY = 0f)
+        if (sourceLang != SourceLanguage.AUTO) {
+            val recognizer = createRecognizer(sourceLang)
+            return@withContext try {
+                runRecognition(recognizer, page)
+            } finally {
+                closeRecognizer(recognizer)
             }
+        }
+
+        // When AUTO (like Google Lens), detect script automatically:
+        // 1. Try Japanese recognizer first (covers Japanese Kanji, Kana, Latin, digits, symbols)
+        val jaRecognizer = TextRecognition.getClient(JapaneseTextRecognizerOptions.Builder().build())
+        val jaBlocks = try {
+            runRecognition(jaRecognizer, page)
         } finally {
-            try {
-                recognizer.close()
-            } catch (e: Exception) {
-                logcat(LogPriority.WARN) { "Error closing ML Kit recognizer: ${e.message}" }
-            }
+            closeRecognizer(jaRecognizer)
+        }
+
+        val allText = jaBlocks.joinToString(" ") { it.text }
+        val hasCjkOrKana = allText.any { ch ->
+            val code = ch.code
+            (code in 0x3040..0x309F) || (code in 0x30A0..0x30FF) || (code in 0x4E00..0x9FFF)
+        }
+
+        if (jaBlocks.isNotEmpty() && hasCjkOrKana) {
+            return@withContext jaBlocks
+        }
+
+        // 2. If no CJK found, try Korean recognizer (for Korean manhwa)
+        val koRecognizer = TextRecognition.getClient(KoreanTextRecognizerOptions.Builder().build())
+        val koBlocks = try {
+            runRecognition(koRecognizer, page)
+        } finally {
+            closeRecognizer(koRecognizer)
+        }
+
+        val hasHangul = koBlocks.joinToString(" ") { it.text }.any { ch ->
+            val code = ch.code
+            (code in 0xAC00..0xD7AF) || (code in 0x1100..0x11FF) || (code in 0x3130..0x318F)
+        }
+
+        if (koBlocks.isNotEmpty() && hasHangul) {
+            return@withContext koBlocks
+        }
+
+        // 3. Fall back to whichever found text (Japanese/Latin or Korean) or run Latin
+        if (jaBlocks.isNotEmpty()) {
+            return@withContext jaBlocks
+        }
+        if (koBlocks.isNotEmpty()) {
+            return@withContext koBlocks
+        }
+
+        val latinRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+        try {
+            runRecognition(latinRecognizer, page)
+        } finally {
+            closeRecognizer(latinRecognizer)
+        }
+    }
+
+    private suspend fun runRecognition(recognizer: TextRecognizer, page: Bitmap): List<TextBlock> {
+        return if (page.height > 2500) {
+            recognizeTallStrip(recognizer, page)
+        } else {
+            recognizeBitmap(recognizer, page, offsetY = 0f)
+        }
+    }
+
+    private fun closeRecognizer(recognizer: TextRecognizer) {
+        try {
+            recognizer.close()
+        } catch (e: Exception) {
+            logcat(LogPriority.WARN) { "Error closing ML Kit recognizer: ${e.message}" }
         }
     }
 

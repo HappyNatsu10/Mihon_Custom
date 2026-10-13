@@ -37,6 +37,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
@@ -53,6 +54,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -68,6 +70,7 @@ import androidx.media3.common.Player
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.ui.PlayerView
 import dev.zacsweers.metro.Inject
 import eu.kanade.domain.base.BasePreferences
@@ -214,10 +217,11 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     companion object {
-        fun newIntent(context: Context, mangaId: Long, chapterId: Long): Intent {
+        fun newIntent(context: Context, mangaId: Long, chapterId: Long, forceVideo: Boolean = false): Intent {
             return Intent(context, PlayerActivity::class.java).apply {
                 putExtra("manga", mangaId)
                 putExtra("chapter", chapterId)
+                putExtra("force_video", forceVideo)
                 addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
             }
         }
@@ -291,17 +295,51 @@ fun PlayerScreen(
     }
 
     // Load media items into player when playlist changes
+    val context = LocalContext.current
     LaunchedEffect(state.playlist, state.currentChapter?.id) {
         val p = player ?: return@LaunchedEffect
         if (state.playlist.isNotEmpty()) {
             playbackError = null
-            val mediaItems = state.playlist.map { track ->
-                MediaItem.Builder()
-                    .setUri(Uri.parse(track.url))
+            val mediaSources = state.playlist.map { track ->
+                val trackHeaders = track.headers.toMutableMap()
+                val uri = Uri.parse(track.url)
+                val host = uri.host.orEmpty().lowercase()
+                if (!trackHeaders.keys.any { it.equals("referer", ignoreCase = true) }) {
+                    when {
+                        host.contains("pximg.net") || host.contains("pixiv") -> {
+                            trackHeaders["Referer"] = "https://www.pixiv.net/"
+                        }
+                        host.contains("wixmp.com") || host.contains("deviantart") -> {
+                            trackHeaders["Referer"] = "https://www.deviantart.com/"
+                        }
+                        else -> {
+                            viewModel.source?.let { src ->
+                                runCatching { src.baseUrl }.getOrNull()?.let { baseUrl ->
+                                    if (baseUrl.isNotBlank()) trackHeaders["Referer"] = baseUrl
+                                }
+                            }
+                        }
+                    }
+                }
+                if (!trackHeaders.keys.any { it.equals("user-agent", ignoreCase = true) }) {
+                    trackHeaders["User-Agent"] = viewModel.networkHelper.defaultUserAgentProvider()
+                }
+
+                val dataSourceFactory = OkHttpDataSource.Factory(viewModel.networkHelper.client)
+                    .setUserAgent(viewModel.networkHelper.defaultUserAgentProvider())
+                    .setDefaultRequestProperties(trackHeaders)
+
+                val itemMediaSourceFactory = DefaultMediaSourceFactory(context)
+                    .setDataSourceFactory(dataSourceFactory)
+
+                val mediaItem = MediaItem.Builder()
+                    .setUri(uri)
                     .setMediaId(track.index.toString())
                     .build()
+
+                itemMediaSourceFactory.createMediaSource(mediaItem)
             }
-            p.setMediaItems(mediaItems, state.currentTrackIndex, state.initialPositionSeconds * 1000L)
+            p.setMediaSources(mediaSources, state.currentTrackIndex, state.initialPositionSeconds * 1000L)
             p.prepare()
             p.play()
         }
@@ -410,13 +448,28 @@ fun PlayerScreen(
                         fontSize = 14.sp,
                     )
                     Spacer(modifier = Modifier.height(16.dp))
-                    Button(
-                        onClick = {
-                            playbackError = null
-                            viewModel.retry()
-                        },
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(text = stringResource(MR.strings.video_player_retry))
+                        Button(
+                            onClick = {
+                                playbackError = null
+                                viewModel.retry()
+                            },
+                        ) {
+                            Text(text = stringResource(MR.strings.video_player_retry))
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                viewModel.openInReader()
+                            },
+                        ) {
+                            Text(
+                                text = "Open in Reader",
+                                color = Color.White,
+                            )
+                        }
                     }
                 }
             }

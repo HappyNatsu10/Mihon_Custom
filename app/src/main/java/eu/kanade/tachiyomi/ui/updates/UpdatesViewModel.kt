@@ -207,20 +207,27 @@ class UpdatesViewModel(
         dialog,
         combine(hasActiveFilters, getUpdatesItemPreferenceFlow(), expandedGroupKeys, ::Triple),
     ) { items, selectedIds, downloads, dialog, (hasActiveFilters, itemPreferences, expandedKeys) ->
+        val mappedItems = items.orEmpty().map { item ->
+            val downloadState = downloads[item.update.chapterId]
+            item.copy(
+                selected = item.update.chapterId in selectedIds,
+                downloadStateProvider = if (downloadState != null) {
+                    { downloadState }
+                } else {
+                    item.downloadStateProvider
+                },
+            )
+        }
+        val uiModels = UpdatesGrouping.groupUpdates(
+            items = mappedItems,
+            groupByManga = itemPreferences.groupUpdatesByManga,
+            expandedGroupKeys = expandedKeys,
+        )
         State(
             isLoading = items == null,
             hasActiveFilters = hasActiveFilters,
-            items = items.orEmpty().map { item ->
-                val downloadState = downloads[item.update.chapterId]
-                item.copy(
-                    selected = item.update.chapterId in selectedIds,
-                    downloadStateProvider = if (downloadState != null) {
-                        { downloadState }
-                    } else {
-                        item.downloadStateProvider
-                    },
-                )
-            },
+            items = mappedItems,
+            uiModels = uiModels,
             dialog = dialog,
             groupUpdatesByManga = itemPreferences.groupUpdatesByManga,
             expandedGroupKeys = expandedKeys,
@@ -533,6 +540,7 @@ class UpdatesViewModel(
         val isLoading: Boolean = true,
         val hasActiveFilters: Boolean = false,
         val items: List<UpdatesItem> = listOf(),
+        val uiModels: List<eu.kanade.presentation.updates.UpdatesUiModel> = listOf(),
         val dialog: Dialog? = null,
         val groupUpdatesByManga: Boolean = true,
         val expandedGroupKeys: Set<String> = emptySet(),
@@ -540,13 +548,7 @@ class UpdatesViewModel(
         val selected = items.filter { it.selected }
         val selectionMode = selected.isNotEmpty()
 
-        fun getUiModel(): List<UpdatesUiModel> {
-            return UpdatesGrouping.groupUpdates(
-                items = items,
-                groupByManga = groupUpdatesByManga,
-                expandedGroupKeys = expandedGroupKeys,
-            )
-        }
+        fun getUiModel(): List<eu.kanade.presentation.updates.UpdatesUiModel> = uiModels
     }
 
     sealed interface Dialog {

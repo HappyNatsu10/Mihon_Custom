@@ -13,9 +13,11 @@ import dev.zacsweers.metro.AssistedInject
 import dev.zacsweers.metro.ContributesIntoMap
 import dev.zacsweers.metrox.viewmodel.ViewModelAssistedFactory
 import dev.zacsweers.metrox.viewmodel.ViewModelAssistedFactoryKey
+import eu.kanade.domain.chapter.model.toSChapter
 import eu.kanade.domain.source.interactor.GetIncognitoState
 import eu.kanade.domain.track.interactor.TrackChapter
 import eu.kanade.domain.track.service.TrackPreferences
+import eu.kanade.tachiyomi.data.cache.ChapterCache
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.player.detector.DefaultVideoChapterDetector
@@ -63,11 +65,13 @@ class PlayerViewModel(
     val readerPreferences: ReaderPreferences,
     private val trackPreferences: TrackPreferences,
     private val videoChapterDetector: DefaultVideoChapterDetector,
+    private val chapterCache: ChapterCache,
     val networkHelper: NetworkHelper,
 ) : ViewModel() {
 
     val mangaId: Long = savedState.get<Long>("manga") ?: -1L
     private val initialChapterId: Long = savedState.get<Long>("chapter") ?: -1L
+    private val forceVideo: Boolean = savedState.get<Boolean>("force_video") ?: false
 
     private val mutableState = MutableStateFlow(State())
     val state = mutableState.asStateFlow()
@@ -76,7 +80,8 @@ class PlayerViewModel(
     val eventFlow = eventChannel.receiveAsFlow()
 
     private var allChapters: List<Chapter> = emptyList()
-    private var source: HttpSource? = null
+    var source: HttpSource? = null
+        private set
     private var currentChapterId: Long = initialChapterId
     private var sessionStartTime: Instant = Clock.System.now()
     private var incognitoMode: Boolean = false
@@ -127,34 +132,67 @@ class PlayerViewModel(
         val detection = videoChapterDetector.detect(httpSource, chapter)
         when (detection) {
             is VideoDetectionResult.Video -> {
-                val currentIndex = allChapters.indexOf(chapter)
-                val hasNext = currentIndex < allChapters.lastIndex
-                val hasPrev = currentIndex > 0
-
-                val (savedTrack, savedSeconds) = VideoProgressHelper.decode(chapter.lastPageRead.toLong())
-                val resumeSeconds = if (readerPreferences.videoResumePosition.get()) {
-                    VideoProgressHelper.calculateResumePosition(savedSeconds)
-                } else {
-                    0L
-                }
-
-                mutableState.update {
-                    it.copy(
-                        isLoading = false,
-                        currentChapter = chapter,
-                        playlist = detection.playlist,
-                        currentTrackIndex = savedTrack.coerceIn(0, detection.playlist.lastIndex.coerceAtLeast(0)),
-                        initialPositionSeconds = resumeSeconds,
-                        hasNextChapter = hasNext,
-                        hasPreviousChapter = hasPrev,
-                        error = null,
-                    )
-                }
+                applyVideoPlaylist(chapter, detection.playlist)
             }
             VideoDetectionResult.NotVideo -> {
-                // Not a video chapter - navigate back to page reader
-                eventChannel.send(Event.NavigateToReader(mangaId, chapterId))
+                if (forceVideo && chapterId == initialChapterId) {
+                    val rawPages = try {
+                        chapterCache.getPageListFromCache(chapter).ifEmpty {
+                            httpSource.getPageList(chapter.toSChapter())
+                        }
+                    } catch (e: Throwable) {
+                        emptyList()
+                    }
+                    val playlist = rawPages.mapIndexedNotNull { index, page ->
+                        val url = page.imageUrl ?: page.url
+                        if (url.isNotBlank()) {
+                            val effHeaders = DefaultVideoChapterDetector.buildEffectiveHeaders(httpSource, url)
+                            val headersMap = effHeaders.names().associateWith { effHeaders[it].orEmpty() }
+                            VideoTrack(index, url, headersMap)
+                        } else null
+                    }
+                    if (playlist.isNotEmpty()) {
+                        applyVideoPlaylist(chapter, playlist)
+                    } else {
+                        eventChannel.send(Event.NavigateToReader(mangaId, chapterId))
+                    }
+                } else {
+                    // Not a video chapter - navigate back to page reader
+                    eventChannel.send(Event.NavigateToReader(mangaId, chapterId))
+                }
             }
+        }
+    }
+
+    private fun applyVideoPlaylist(chapter: Chapter, playlist: List<VideoTrack>) {
+        val currentIndex = allChapters.indexOf(chapter)
+        val hasNext = currentIndex < allChapters.lastIndex
+        val hasPrev = currentIndex > 0
+
+        val (savedTrack, savedSeconds) = VideoProgressHelper.decode(chapter.lastPageRead.toLong())
+        val resumeSeconds = if (readerPreferences.videoResumePosition.get()) {
+            VideoProgressHelper.calculateResumePosition(savedSeconds)
+        } else {
+            0L
+        }
+
+        mutableState.update {
+            it.copy(
+                isLoading = false,
+                currentChapter = chapter,
+                playlist = playlist,
+                currentTrackIndex = savedTrack.coerceIn(0, playlist.lastIndex.coerceAtLeast(0)),
+                initialPositionSeconds = resumeSeconds,
+                hasNextChapter = hasNext,
+                hasPreviousChapter = hasPrev,
+                error = null,
+            )
+        }
+    }
+
+    fun openInReader() {
+        viewModelScope.launch {
+            eventChannel.send(Event.NavigateToReader(mangaId, currentChapterId))
         }
     }
 

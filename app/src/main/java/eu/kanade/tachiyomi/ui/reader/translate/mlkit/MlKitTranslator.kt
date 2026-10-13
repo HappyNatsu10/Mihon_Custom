@@ -14,13 +14,38 @@ import logcat.logcat
 
 class MlKitTranslator : TextTranslator {
 
-    private fun resolveSourceLanguageTag(from: SourceLanguage): String {
+    private fun detectLanguageTag(text: String): String {
+        var hasKana = false
+        var hasHangul = false
+        var hasHanzi = false
+        var hasLatin = false
+
+        for (ch in text) {
+            val code = ch.code
+            when {
+                (code in 0x3040..0x309F) || (code in 0x30A0..0x30FF) -> hasKana = true
+                (code in 0xAC00..0xD7AF) || (code in 0x1100..0x11FF) || (code in 0x3130..0x318F) -> hasHangul = true
+                (code in 0x4E00..0x9FFF) || (code in 0x3400..0x4DBF) -> hasHanzi = true
+                (code in 0x41..0x5A) || (code in 0x61..0x7A) -> hasLatin = true
+            }
+        }
+
+        return when {
+            hasHangul -> TranslateLanguage.KOREAN
+            hasKana -> TranslateLanguage.JAPANESE
+            hasHanzi -> TranslateLanguage.CHINESE
+            hasLatin -> TranslateLanguage.ENGLISH
+            else -> TranslateLanguage.JAPANESE
+        }
+    }
+
+    private fun resolveSourceLanguageTag(from: SourceLanguage, textSample: String): String {
         return when (from) {
             SourceLanguage.JAPANESE -> TranslateLanguage.JAPANESE
             SourceLanguage.CHINESE -> TranslateLanguage.CHINESE
             SourceLanguage.KOREAN -> TranslateLanguage.KOREAN
             SourceLanguage.ENGLISH -> TranslateLanguage.ENGLISH
-            SourceLanguage.AUTO -> TranslateLanguage.JAPANESE // default manga source language
+            SourceLanguage.AUTO -> detectLanguageTag(textSample)
         }
     }
 
@@ -35,8 +60,13 @@ class MlKitTranslator : TextTranslator {
     ): List<String> = withContext(Dispatchers.IO) {
         if (blocks.isEmpty()) return@withContext emptyList()
 
-        val sourceTag = resolveSourceLanguageTag(from)
+        val allSample = blocks.joinToString(" ")
+        val sourceTag = resolveSourceLanguageTag(from, allSample)
         val targetTag = resolveTargetLanguageTag(to)
+
+        if (sourceTag == targetTag) {
+            return@withContext blocks
+        }
 
         val options = TranslatorOptions.Builder()
             .setSourceLanguage(sourceTag)
