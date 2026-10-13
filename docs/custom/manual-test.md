@@ -185,3 +185,101 @@ This guide provides test procedures for validating the features added in **Mihon
   - An error toast message is shown (e.g. "Network error while translating page").
   - The reader does not crash, freeze, or block page turning.
   - The original image remains displayed.
+
+---
+
+## 5. Feature D: Video Chapter Player
+
+### Test 5.1: Automatic Video Chapter Detection & Launch
+- **Preconditions:** An online source with a chapter returning a video URL (e.g., `.mp4`, `.m3u8`, or `video/*` content type).
+- **Steps:**
+  1. Open the chapter from Manga details, Updates, or History.
+- **Expected Results:**
+  - Detection evaluates the stream before any images are downloaded.
+  - The page reader is never initialized or shown.
+  - `PlayerActivity` launches directly into immersive streaming playback.
+  - Video bytes are never preloaded or decoded by `HttpPageLoader`.
+
+### Test 5.2: Normal Image Chapters Unaffected
+- **Steps:**
+  1. Open standard image-based chapters from any source or local storage.
+- **Expected Results:**
+  - The detector identifies the chapter as non-video.
+  - Chapter opens in standard page/webtoon reader immediately without delay or disruption.
+
+### Test 5.3: Player Controls & Gesture Scrubbing
+- **Steps:**
+  1. While a video is playing, tap the screen once.
+- **Expected Results:**
+  - Controls overlay displays smoothly with top bar (manga & chapter title), center controls, seekbar, and bottom actions.
+  - After 3 seconds without interaction, controls auto-hide.
+  2. Double-tap the left half of the screen.
+- **Expected Results:**
+  - Video skips backward by the configured interval (default: 10 seconds).
+  3. Double-tap the right half of the screen.
+- **Expected Results:**
+  - Video skips forward by the configured interval (default: 10 seconds).
+  4. Drag the seek slider and release.
+- **Expected Results:**
+  - Player seeks instantly to the specified position.
+
+### Test 5.4: Playback Speed & Orientation Lock
+- **Steps:**
+  1. Tap the speed button in the bottom bar -> select `1.5x`.
+- **Expected Results:**
+  - Playback accelerates smoothly to 1.5x speed with pitch correction.
+  2. Rotate device while "Lock landscape" is ON (default).
+- **Expected Results:**
+  - Player maintains landscape mode and does not restart playback.
+
+### Test 5.5: Multi-Track Playlist Auto-Advance
+- **Preconditions:** A chapter containing multiple video pages (e.g. part 1, part 2).
+- **Steps:**
+  1. Observe the top bar badge: shows "Part 1 of 2".
+  2. Allow Part 1 to finish playing.
+- **Expected Results:**
+  - Player automatically transitions to Part 2 without returning to the chapter list.
+  - Top bar updates to "Part 2 of 2".
+
+### Test 5.6: Resume from Saved Position
+- **Steps:**
+  1. Watch a video up to `05:30` (330 seconds), then exit the player.
+  2. Reopen the chapter from the manga details screen.
+- **Expected Results:**
+  - Player resumes playback at approximately `05:27` (saved position minus 3 seconds).
+
+### Test 5.7: 90% Duration Read Threshold & History
+- **Steps:**
+  1. Seek playback to 91% of total duration (or let the video finish).
+  2. Exit the player and inspect the chapter in the chapter list and History tab.
+- **Expected Results:**
+  - Chapter is marked as read with read icon/indicator cleared.
+  - History tab records the watch session with watch time duration.
+  - Any linked trackers update chapter progress.
+
+### Test 5.8: Chapter Navigation (Video $\leftrightarrow$ Image)
+- **Steps:**
+  1. In `PlayerActivity`, tap **Next Chapter** when the next chapter is an image chapter.
+- **Expected Results:**
+  - `PlayerActivity` finishes and `ReaderActivity` opens the image chapter seamlessly.
+  2. In `ReaderActivity`, navigate to the next chapter when that chapter is a video chapter.
+- **Expected Results:**
+  - `ReaderActivity` transitions directly into `PlayerActivity`.
+
+### Test 5.9: Lifecycle & Audio Interruption
+- **Steps:**
+  1. While playing video audio through headphones, disconnect the headphones.
+- **Expected Results:**
+  - Playback pauses immediately (`ACTION_AUDIO_BECOMING_NOISY`).
+  2. Press home button to background the app.
+- **Expected Results:**
+  - Playback pauses; no background audio leakage.
+
+### Test 5.10: "Video chapters" Master Switch
+- **Steps:**
+  1. Navigate to **More -> Settings -> Reader -> Video**.
+  2. Toggle **"Video chapters"** OFF.
+  3. Reopen a video chapter.
+- **Expected Results:**
+  - Chapter opens in upstream image reader without video player routing.
+
