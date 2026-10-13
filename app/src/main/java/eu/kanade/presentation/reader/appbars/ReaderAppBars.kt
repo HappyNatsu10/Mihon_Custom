@@ -74,6 +74,11 @@ fun ReaderAppBars(
     cropEnabled: Boolean,
     onClickCropBorder: () -> Unit,
     onClickSettings: () -> Unit,
+    // CUSTOM: Feature C - Translation parameters
+    translateEnabled: Boolean = false,
+    isTranslating: Boolean = false,
+    isTranslated: Boolean = false,
+    onClickTranslate: () -> Unit = {},
 ) {
     val backgroundColor = MaterialTheme.colorScheme
         .surfaceColorAtElevation(3.dp)
@@ -173,6 +178,11 @@ fun ReaderAppBars(
                     cropEnabled = cropEnabled,
                     onClickCropBorder = onClickCropBorder,
                     onClickSettings = onClickSettings,
+                    // CUSTOM: Feature C - Translation parameters
+                    translateEnabled = translateEnabled,
+                    isTranslating = isTranslating,
+                    isTranslated = isTranslated,
+                    onClickTranslate = onClickTranslate,
                 )
             }
         }

@@ -18,6 +18,14 @@ import mihon.icons.materialsymbols.rounded.Settings
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.stringResource
 
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.dp
+import eu.kanade.tachiyomi.R
+
 @Composable
 fun ReaderBottomBar(
     readingMode: ReadingMode,
@@ -27,6 +35,11 @@ fun ReaderBottomBar(
     cropEnabled: Boolean,
     onClickCropBorder: () -> Unit,
     onClickSettings: () -> Unit,
+    // CUSTOM: Feature C - Translation button
+    translateEnabled: Boolean = false,
+    isTranslating: Boolean = false,
+    isTranslated: Boolean = false,
+    onClickTranslate: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -35,6 +48,28 @@ fun ReaderBottomBar(
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (translateEnabled) {
+            IconButton(
+                onClick = onClickTranslate,
+                enabled = !isTranslating,
+            ) {
+                if (isTranslating) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp,
+                    )
+                } else {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_translate),
+                        contentDescription = stringResource(
+                            if (isTranslated) MR.strings.action_translate_original else MR.strings.action_translate,
+                        ),
+                        tint = if (isTranslated) MaterialTheme.colorScheme.primary else LocalContentColor.current,
+                    )
+                }
+            }
+        }
+
         IconButton(onClick = onClickReadingMode) {
             Icon(
                 imageVector = readingMode.icon,

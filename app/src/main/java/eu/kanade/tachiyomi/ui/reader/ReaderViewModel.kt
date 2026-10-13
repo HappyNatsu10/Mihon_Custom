@@ -77,7 +77,9 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import logcat.LogPriority
+import mihon.app.di.AppGraph
 import mihon.core.metro.AppCoroutineScope
+import mihon.core.metro.metroGraph
 import tachiyomi.core.common.preference.toggle
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
@@ -560,7 +562,35 @@ class ReaderViewModel(
             downloadNextChapters()
         }
 
+        // CUSTOM: Feature C - Auto-translate page if enabled
+        if (readerPreferences.readerTranslationEnabled.get() &&
+            readerPreferences.readerTranslationAuto.get() &&
+            page.translatedFile == null
+        ) {
+            autoTranslatePage(page)
+        }
+
         eventChannel.trySend(Event.PageChanged)
+    }
+
+    private fun autoTranslatePage(page: ReaderPage) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                page.statusFlow.first { it == Page.State.Ready || it is Page.State.Error }
+                if (page.status != Page.State.Ready) return@launch
+                val pipeline = context.metroGraph<AppGraph>().translationPipeline
+                val file = pipeline.translatePage(page)
+                withContext(Dispatchers.Main) {
+                    page.translatedFile = file
+                    page.isShowingTranslation = true
+                    page.status = Page.State.LoadPage
+                    kotlinx.coroutines.delay(15)
+                    page.status = Page.State.Ready
+                }
+            } catch (e: Exception) {
+                logcat(LogPriority.WARN, e) { "Auto-translation skipped for page ${page.number}" }
+            }
+        }
     }
 
     private fun downloadNextChapters() {

@@ -197,6 +197,58 @@ class ReaderPreferences(
         false,
     )
 
+    // region CUSTOM: Feature C - In-reader translation
+    val readerTranslationEnabled: Preference<Boolean> = preferenceStore.getBoolean(
+        "pref_reader_translation_enabled",
+        true,
+    )
+
+    val readerTranslationAuto: Preference<Boolean> = preferenceStore.getBoolean(
+        "pref_reader_translation_auto",
+        false,
+    )
+
+    val readerTranslationProvider: Preference<String> = preferenceStore.getString(
+        "pref_reader_translation_provider",
+        "mlkit",
+    )
+
+    val readerTranslationSource: Preference<String> = preferenceStore.getString(
+        "pref_reader_translation_source",
+        "auto",
+    )
+
+    val readerTranslationTarget: Preference<String> = preferenceStore.getString(
+        "pref_reader_translation_target",
+        "en",
+    )
+
+    val readerTranslationGeminiApiKey: Preference<String> = preferenceStore.getString(
+        "pref_reader_translation_gemini_api_key",
+        "",
+    )
+
+    val readerTranslationGeminiModel: Preference<String> = preferenceStore.getString(
+        "pref_reader_translation_gemini_model",
+        "gemini-1.5-flash",
+    )
+
+    val readerTranslationGeminiEndpoint: Preference<String> = preferenceStore.getString(
+        "pref_reader_translation_gemini_endpoint",
+        "",
+    )
+
+    val readerTranslationCloudConfirmed: Preference<Boolean> = preferenceStore.getBoolean(
+        "pref_reader_translation_cloud_confirmed",
+        false,
+    )
+
+    val readerTranslationOverlayOpacity: Preference<Float> = preferenceStore.getFloat(
+        "pref_reader_translation_overlay_opacity",
+        0.95f,
+    )
+    // endregion
+
     // endregion
 
     enum class FlashColor {

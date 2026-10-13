@@ -31,7 +31,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -93,6 +95,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import logcat.LogPriority
 import mihon.app.di.AppGraph
 import mihon.core.metro.metroGraph
@@ -142,6 +145,10 @@ class ReaderActivity : BaseActivity() {
 
     var isScrollingThroughPages = false
         private set
+
+    // CUSTOM: Feature C - Translation state
+    private var isTranslatingPage by mutableStateOf(false)
+    private var showCloudTranslationPrivacyDialog by mutableStateOf(false)
 
     /**
      * Called when the activity is created. Initializes the presenter and configuration.
@@ -333,6 +340,32 @@ class ReaderActivity : BaseActivity() {
             }
             null -> {}
         }
+
+        if (showCloudTranslationPrivacyDialog) {
+            AlertDialog(
+                onDismissRequest = { showCloudTranslationPrivacyDialog = false },
+                title = { Text(stringResource(MR.strings.translation_privacy_title)) },
+                text = { Text(stringResource(MR.strings.translation_privacy_warning)) },
+                confirmButton = {
+                    androidx.compose.material3.TextButton(
+                        onClick = {
+                            readerPreferences.readerTranslationCloudConfirmed.set(true)
+                            showCloudTranslationPrivacyDialog = false
+                            getCurrentReaderPage()?.let { executePageTranslation(it) }
+                        },
+                    ) {
+                        Text(stringResource(MR.strings.action_ok))
+                    }
+                },
+                dismissButton = {
+                    androidx.compose.material3.TextButton(
+                        onClick = { showCloudTranslationPrivacyDialog = false },
+                    ) {
+                        Text(stringResource(MR.strings.action_cancel))
+                    }
+                },
+            )
+        }
     }
 
     /**
@@ -462,6 +495,10 @@ class ReaderActivity : BaseActivity() {
         val verticalNavigatorOnLeft by readerPreferences.verticalNavigatorOnLeft.collectAsState()
         val verticalNavigatorHeight by readerPreferences.verticalNavigatorHeight.collectAsState()
 
+        val translationEnabled by readerPreferences.readerTranslationEnabled.collectAsState()
+        val currentReaderPage = getCurrentReaderPage()
+        val isTranslated = currentReaderPage?.isShowingTranslation == true
+
         ReaderAppBars(
             visible = state.menuVisible,
 
@@ -518,6 +555,12 @@ class ReaderActivity : BaseActivity() {
                 menuToggleToast = toast(if (enabled) MR.strings.on else MR.strings.off)
             },
             onClickSettings = viewModel::openSettingsDialog,
+
+            // CUSTOM: Feature C - Translation button
+            translateEnabled = translationEnabled,
+            isTranslating = isTranslatingPage,
+            isTranslated = isTranslated,
+            onClickTranslate = ::toggleOrTranslateCurrentPage,
         )
     }
 
@@ -962,6 +1005,89 @@ class ReaderActivity : BaseActivity() {
         private fun setLayerPaint(grayscale: Boolean, invertedColors: Boolean) {
             val paint = if (grayscale || invertedColors) getCombinedPaint(grayscale, invertedColors) else null
             binding.viewerContainer.setLayerType(LAYER_TYPE_HARDWARE, paint)
+        }
+    }
+
+    // CUSTOM: Feature C - Translation helper methods
+    private fun getCurrentReaderPage(): ReaderPage? {
+        val state = viewModel.state.value
+        val pages = state.currentChapter?.pages ?: return null
+        return pages.find { it.number == state.currentPage } ?: pages.getOrNull(state.currentPage - 1)
+    }
+
+    private fun toggleOrTranslateCurrentPage() {
+        val page = getCurrentReaderPage()
+        if (page == null) {
+            toast(MR.strings.translation_page_loading)
+            return
+        }
+
+        if (page.status != eu.kanade.tachiyomi.source.model.Page.State.Ready) {
+            toast(MR.strings.translation_page_loading)
+            return
+        }
+
+        // 1. Toggle if already translated
+        if (page.translatedFile != null && page.translatedFile!!.exists()) {
+            page.isShowingTranslation = !page.isShowingTranslation
+            lifecycleScope.launch(Dispatchers.Main) {
+                page.status = eu.kanade.tachiyomi.source.model.Page.State.LoadPage
+                kotlinx.coroutines.delay(15)
+                page.status = eu.kanade.tachiyomi.source.model.Page.State.Ready
+                menuToggleToast?.cancel()
+                menuToggleToast = toast(
+                    if (page.isShowingTranslation) MR.strings.action_translate_translated else MR.strings.action_translate_original,
+                )
+            }
+            return
+        }
+
+        // 2. Check cloud provider confirmation if Gemini is selected
+        val provider = readerPreferences.readerTranslationProvider.get()
+        if (provider == "gemini") {
+            val apiKey = readerPreferences.readerTranslationGeminiApiKey.get()
+            if (apiKey.isBlank()) {
+                toast(MR.strings.pref_translation_api_key_summary)
+                viewModel.openSettingsDialog()
+                return
+            }
+            if (!readerPreferences.readerTranslationCloudConfirmed.get()) {
+                showCloudTranslationPrivacyDialog = true
+                return
+            }
+        }
+
+        executePageTranslation(page)
+    }
+
+    private fun executePageTranslation(page: ReaderPage) {
+        val pipeline = metroGraph<AppGraph>().translationPipeline
+        isTranslatingPage = true
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val translatedFile = pipeline.translatePage(page)
+                withContext(Dispatchers.Main) {
+                    page.translatedFile = translatedFile
+                    page.isShowingTranslation = true
+                    page.status = eu.kanade.tachiyomi.source.model.Page.State.LoadPage
+                    kotlinx.coroutines.delay(15)
+                    page.status = eu.kanade.tachiyomi.source.model.Page.State.Ready
+                    isTranslatingPage = false
+                    toast(MR.strings.action_translate_translated)
+                }
+            } catch (e: eu.kanade.tachiyomi.ui.reader.translate.NoTextFoundException) {
+                withContext(Dispatchers.Main) {
+                    isTranslatingPage = false
+                    toast(MR.strings.translation_no_text)
+                }
+            } catch (e: Throwable) {
+                withContext(Dispatchers.Main) {
+                    isTranslatingPage = false
+                    logcat(LogPriority.ERROR) { "Failed to translate page: ${e.message}" }
+                    val message = e.message ?: "Translation error"
+                    toast(this@ReaderActivity.stringResource(MR.strings.translation_error, message))
+                }
+            }
         }
     }
 }

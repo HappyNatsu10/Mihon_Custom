@@ -146,7 +146,8 @@ class PagerPageHolder(
     private suspend fun setImage() {
         progressIndicator?.setProgress(0)
 
-        val streamFn = page.stream ?: return
+        // CUSTOM: Feature C - Use getEffectiveStream for translation support
+        val streamFn = page.getEffectiveStream() ?: return
 
         try {
             val buffer = withContext(Dispatchers.IO) { streamFn().use { Buffer().readFrom(it) } }

@@ -127,6 +127,9 @@ interface AppGraph : ViewModelGraph {
 
     val getExtensionStoreCountAsFlow: GetExtensionStoreCountAsFlow
 
+    // CUSTOM: Feature C - Translation pipeline
+    val translationPipeline: eu.kanade.tachiyomi.ui.reader.translate.TranslationPipeline
+
     @DependencyGraph.Factory
     fun interface Factory {
         fun create(@Provides context: Context, @Provides @IsDebugBuild isDebugBuild: Boolean): AppGraph

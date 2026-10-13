@@ -1131,4 +1131,5 @@
     <string name="translation_error">Translation failed: %s</string>
     <string name="translation_privacy_title">Third-party translation</string>
     <string name="translation_privacy_warning">Page images will be sent to Google Gemini API for OCR and translation. Do you want to proceed?</string>
+    <string name="translation_page_loading">Page is still loading…</string>
 </resources>
