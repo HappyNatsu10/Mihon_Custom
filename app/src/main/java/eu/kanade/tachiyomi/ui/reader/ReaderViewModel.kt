@@ -131,6 +131,7 @@ class ReaderViewModel(
     private val coverCache: CoverCache,
     private val chapterCache: ChapterCache,
     private val downloadCache: DownloadCache,
+    private val videoChapterDetector: eu.kanade.tachiyomi.ui.player.detector.DefaultVideoChapterDetector,
 ) : ViewModel() {
 
     @AssistedFactory
@@ -385,6 +386,15 @@ class ReaderViewModel(
         loader: ChapterLoader,
         chapter: ReaderChapter,
     ): ViewerChapters {
+        // CUSTOM: Feature D - Detect if chapter is a video before preloading page images
+        if (readerPreferences.videoChapterDetection.get() && source is HttpSource) {
+            val detection = videoChapterDetector.detect(source as HttpSource, chapter.chapter)
+            if (detection is eu.kanade.tachiyomi.ui.player.model.VideoDetectionResult.Video) {
+                eventChannel.send(Event.OpenVideoPlayer(mangaId, chapter.chapter.id))
+                throw CancellationException("Opening in video player")
+            }
+        }
+
         loader.loadChapter(chapter)
 
         val chapterPos = chapterList.indexOf(chapter)
@@ -1173,6 +1183,7 @@ class ReaderViewModel(
         data class SavedImage(val result: SaveImageResult) : Event
         data class ShareImage(val uri: Uri, val page: ReaderPage) : Event
         data class CopyImage(val uri: Uri) : Event
+        data class OpenVideoPlayer(val mangaId: Long, val chapterId: Long) : Event
     }
 }
 

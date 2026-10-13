@@ -164,6 +164,14 @@
                 android:resource="@xml/s_pen_actions" />
         </activity>
 
+        <!-- CUSTOM: Feature D - Video Player -->
+        <activity
+            android:name=".ui.player.PlayerActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:theme="@style/Theme.Tachiyomi" />
+
         <activity
             android:name=".ui.security.UnlockActivity"
             android:exported="false"

@@ -249,6 +249,38 @@ class ReaderPreferences(
     )
     // endregion
 
+    // region CUSTOM: Feature D - Video chapter player
+    val videoChapterDetection: Preference<Boolean> = preferenceStore.getBoolean(
+        "pref_video_chapter_detection",
+        true,
+    )
+
+    val videoPlaybackSpeed: Preference<Float> = preferenceStore.getFloat(
+        "pref_video_playback_speed",
+        1.0f,
+    )
+
+    val videoSkipInterval: Preference<Int> = preferenceStore.getInt(
+        "pref_video_skip_interval",
+        10,
+    )
+
+    val videoResumePosition: Preference<Boolean> = preferenceStore.getBoolean(
+        "pref_video_resume_position",
+        true,
+    )
+
+    val videoAutoPlayNext: Preference<Boolean> = preferenceStore.getBoolean(
+        "pref_video_auto_play_next",
+        false,
+    )
+
+    val videoLockLandscape: Preference<Boolean> = preferenceStore.getBoolean(
+        "pref_video_lock_landscape",
+        true,
+    )
+    // endregion
+
     // endregion
 
     enum class FlashColor {

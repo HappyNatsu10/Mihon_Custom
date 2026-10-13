@@ -331,6 +331,13 @@ dependencies {
     implementation(libs.mlkit.text.recognition.korean)
     implementation(libs.mlkit.translate)
 
+    // CUSTOM: Feature D - Video Player (Media3 / ExoPlayer)
+    implementation(libs.media3.exoplayer)
+    implementation(libs.media3.exoplayer.dash)
+    implementation(libs.media3.exoplayer.hls)
+    implementation(libs.media3.ui)
+    implementation(libs.media3.datasource.okhttp)
+
     // Tests
     testImplementation(libs.bundles.test)
     testRuntimeOnly(libs.junit.platform.launcher)

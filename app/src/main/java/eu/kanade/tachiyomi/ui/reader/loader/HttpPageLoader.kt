@@ -56,8 +56,12 @@ internal class HttpPageLoader(
                 it.chapter = chapter
             }
         }
-            .also {
-                it.loadByRollingChunked(0, 1, 1)
+            .also { readerPages ->
+                val firstUrl = pages.firstOrNull()?.imageUrl ?: pages.firstOrNull()?.url.orEmpty()
+                val isVideo = eu.kanade.tachiyomi.ui.player.detector.DefaultVideoChapterDetector.hasVideoExtension(firstUrl)
+                if (!isVideo) {
+                    readerPages.loadByRollingChunked(0, 1, 1)
+                }
             }
     }
 

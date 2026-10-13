@@ -66,6 +66,7 @@ interface AppGraph : ViewModelGraph {
     fun inject(app: App)
     fun inject(mainActivity: MainActivity)
     fun inject(readerActivity: ReaderActivity)
+    fun inject(playerActivity: eu.kanade.tachiyomi.ui.player.PlayerActivity)
     fun inject(webViewActivity: WebViewActivity)
     fun inject(baseOAuthLoginActivity: BaseOAuthLoginActivity)
     fun inject(libraryUpdateWorker: LibraryUpdateWorker)
@@ -129,6 +130,9 @@ interface AppGraph : ViewModelGraph {
 
     // CUSTOM: Feature C - Translation pipeline
     val translationPipeline: eu.kanade.tachiyomi.ui.reader.translate.TranslationPipeline
+
+    // CUSTOM: Feature D - Video Chapter Detector
+    val videoChapterDetector: eu.kanade.tachiyomi.ui.player.detector.DefaultVideoChapterDetector
 
     @DependencyGraph.Factory
     fun interface Factory {

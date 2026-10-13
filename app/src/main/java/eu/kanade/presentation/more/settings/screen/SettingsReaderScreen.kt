@@ -71,6 +71,7 @@ object SettingsReaderScreen : SearchableSettings {
             getWebtoonGroup(readerPreferences = readerPref),
             getNavigationGroup(readerPreferences = readerPref),
             getActionsGroup(readerPreferences = readerPref),
+            getVideoGroup(readerPreferences = readerPref),
         )
     }
 
@@ -427,6 +428,57 @@ object SettingsReaderScreen : SearchableSettings {
                     preference = readerPreferences.folderPerManga,
                     title = stringResource(MR.strings.pref_create_folder_per_manga),
                     subtitle = stringResource(MR.strings.pref_create_folder_per_manga_summary),
+                ),
+            ),
+        )
+    }
+
+    @Composable
+    private fun getVideoGroup(readerPreferences: ReaderPreferences): Preference.PreferenceGroup {
+        return Preference.PreferenceGroup(
+            title = stringResource(MR.strings.pref_category_video),
+            preferenceItems = listOf(
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = readerPreferences.videoChapterDetection,
+                    title = stringResource(MR.strings.pref_video_detection),
+                    subtitle = stringResource(MR.strings.pref_video_detection_summary),
+                ),
+                Preference.PreferenceItem.ListPreference(
+                    preference = readerPreferences.videoPlaybackSpeed,
+                    entries = mapOf(
+                        0.5f to "0.5x",
+                        0.75f to "0.75x",
+                        1.0f to "1.0x",
+                        1.25f to "1.25x",
+                        1.5f to "1.5x",
+                        2.0f to "2.0x",
+                    ),
+                    title = stringResource(MR.strings.pref_video_playback_speed),
+                ),
+                Preference.PreferenceItem.ListPreference(
+                    preference = readerPreferences.videoSkipInterval,
+                    entries = mapOf(
+                        5 to "5s",
+                        10 to "10s",
+                        15 to "15s",
+                        30 to "30s",
+                    ),
+                    title = stringResource(MR.strings.pref_video_skip_interval),
+                ),
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = readerPreferences.videoResumePosition,
+                    title = stringResource(MR.strings.pref_video_resume_position),
+                    subtitle = stringResource(MR.strings.pref_video_resume_position_summary),
+                ),
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = readerPreferences.videoAutoPlayNext,
+                    title = stringResource(MR.strings.pref_video_auto_play_next),
+                    subtitle = stringResource(MR.strings.pref_video_auto_play_next_summary),
+                ),
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = readerPreferences.videoLockLandscape,
+                    title = stringResource(MR.strings.pref_video_lock_landscape),
+                    subtitle = stringResource(MR.strings.pref_video_lock_landscape_summary),
                 ),
             ),
         )

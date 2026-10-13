@@ -1132,4 +1132,22 @@
     <string name="translation_privacy_title">Third-party translation</string>
     <string name="translation_privacy_warning">Page images will be sent to Google Gemini API for OCR and translation. Do you want to proceed?</string>
     <string name="translation_page_loading">Page is still loading…</string>
+
+    <!-- CUSTOM: Feature D - Video chapter player -->
+    <string name="pref_category_video">Video</string>
+    <string name="pref_video_detection">Video chapters</string>
+    <string name="pref_video_detection_summary">Automatically detect video chapters and stream in video player</string>
+    <string name="pref_video_playback_speed">Default playback speed</string>
+    <string name="pref_video_skip_interval">Skip interval</string>
+    <string name="pref_video_skip_interval_summary">%1$d seconds</string>
+    <string name="pref_video_resume_position">Resume from last position</string>
+    <string name="pref_video_resume_position_summary">Resume playback from previously saved timestamp</string>
+    <string name="pref_video_auto_play_next">Auto-play next chapter</string>
+    <string name="pref_video_auto_play_next_summary">Automatically play the next chapter when video ends</string>
+    <string name="pref_video_lock_landscape">Lock landscape</string>
+    <string name="pref_video_lock_landscape_summary">Always play video chapters in landscape orientation</string>
+    <string name="video_player_error">Error playing video: %s</string>
+    <string name="video_player_retry">Retry</string>
+    <string name="video_part_indicator">Part %1$d of %2$d</string>
+    <string name="video_playback_speed_title">Playback speed</string>
 </resources>

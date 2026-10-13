@@ -250,6 +250,10 @@ class ReaderActivity : BaseActivity() {
                     is ReaderViewModel.Event.SetCoverResult -> {
                         onSetAsCoverResult(event.result)
                     }
+                    is ReaderViewModel.Event.OpenVideoPlayer -> {
+                        startActivity(eu.kanade.tachiyomi.ui.player.PlayerActivity.newIntent(this@ReaderActivity, event.mangaId, event.chapterId))
+                        finish()
+                    }
                 }
             }
             .launchIn(lifecycleScope)
