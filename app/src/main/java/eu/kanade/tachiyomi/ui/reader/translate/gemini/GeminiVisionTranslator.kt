@@ -49,7 +49,7 @@ class GeminiVisionTranslator(
         }
         val customEndpoint = endpointProvider().trim()
 
-        fun buildUrl(modelName: String): String {
+        fun buildUrl(modelName: String, apiVersion: String = "v1beta"): String {
             if (customEndpoint.isNotBlank()) {
                 val endpoint = customEndpoint.trim()
                 return when {
@@ -64,11 +64,11 @@ class GeminiVisionTranslator(
                     }
                     else -> {
                         val base = endpoint.trimEnd('/')
-                        "$base/v1beta/models/$modelName:generateContent?key=$apiKey"
+                        "$base/$apiVersion/models/$modelName:generateContent?key=$apiKey"
                     }
                 }
             }
-            return "https://generativelanguage.googleapis.com/v1beta/models/$modelName:generateContent?key=$apiKey"
+            return "https://generativelanguage.googleapis.com/$apiVersion/models/$modelName:generateContent?key=$apiKey"
         }
 
         // Downscale image if large to optimize network payload
@@ -105,13 +105,17 @@ class GeminiVisionTranslator(
         }
 
         val prompt = """
-            You are an expert manga translator, working like Google Lens.
+            You are a professional manga localization expert and translator.
             1. Detect all speech bubbles, dialogue captions, and text on this manga page.
-            2. Translate all the dialogue accurately into natural, readable $targetLangName.
+            2. Translate all dialogue into natural, fluent $targetLangName dialogue:
+               - Infer missing subjects and pronouns (I, you, he, she, we) from the visual context and speaker.
+               - Use natural conversational English and contractions (e.g. "I'm", "don't", "let's") instead of stiff literal machine translation.
+               - Connect split speech bubbles across panels so thoughts flow as coherent, grammatical sentences.
+               - Adapt Japanese/Korean idioms and slang to natural equivalent expressions.
             3. Return a JSON array where each object has:
-            - "box_2d": [ymin, xmin, ymax, xmax] as normalized integers from 0 to 1000 representing the bounding box of the speech bubble
-            - "original_text": string
-            - "translated_text": string
+               - "box_2d": [ymin, xmin, ymax, xmax] as normalized integers from 0 to 1000 representing the bounding box of the speech bubble
+               - "original_text": string
+               - "translated_text": string
             Respond ONLY with the JSON array, no explanation, no markdown backticks.
         """.trimIndent()
 
@@ -136,12 +140,22 @@ class GeminiVisionTranslator(
             }
         """.trimIndent()
 
-        val modelsToTry = linkedSetOf(cleanModel, "gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro")
+        val candidatesToTry = listOf(
+            Pair("v1beta", cleanModel),
+            Pair("v1beta", "gemini-1.5-flash-latest"),
+            Pair("v1beta", "gemini-1.5-flash"),
+            Pair("v1", cleanModel),
+            Pair("v1", "gemini-1.5-flash"),
+            Pair("v1beta", "gemini-2.0-flash-exp"),
+            Pair("v1beta", "gemini-1.5-pro-latest"),
+            Pair("v1", "gemini-1.5-pro"),
+        ).distinct()
+
         var lastResponseCode = 0
         var lastResponseBody = ""
 
-        for (tryModel in modelsToTry) {
-            val url = buildUrl(tryModel)
+        for ((version, tryModel) in candidatesToTry) {
+            val url = buildUrl(tryModel, version)
             val request = Request.Builder()
                 .url(url)
                 .addHeader("x-goog-api-key", apiKey)
@@ -151,7 +165,7 @@ class GeminiVisionTranslator(
             val response = try {
                 okHttpClient.newCall(request).execute()
             } catch (e: Exception) {
-                logcat(LogPriority.ERROR) { "Network error calling Gemini API with model $tryModel: ${e.message}" }
+                logcat(LogPriority.ERROR) { "Network error calling Gemini API with model $tryModel ($version): ${e.message}" }
                 throw IllegalStateException("Network connection failed. Please check your internet connection.", e)
             }
 
@@ -164,7 +178,7 @@ class GeminiVisionTranslator(
             lastResponseBody = body
 
             if (response.code == 404) {
-                logcat(LogPriority.WARN) { "Model $tryModel returned 404, attempting fallback model..." }
+                logcat(LogPriority.WARN) { "Model $tryModel on $version returned 404, attempting fallback..." }
                 continue
             } else {
                 // If 400/403/429, don't keep trying all models needlessly
@@ -172,11 +186,21 @@ class GeminiVisionTranslator(
             }
         }
 
+        val serverErrorSnippet = if (lastResponseBody.isNotBlank()) {
+            val jsonMsg = try {
+                val element = Json.parseToJsonElement(lastResponseBody)
+                element.jsonObject["error"]?.jsonObject?.get("message")?.jsonPrimitive?.content
+            } catch (_: Exception) { null }
+            jsonMsg ?: lastResponseBody.take(300)
+        } else {
+            "No error details returned by Google"
+        }
+
         val errorMsg = when (lastResponseCode) {
-            400, 403 -> "Invalid Gemini API key or unauthorized request."
-            404 -> "Gemini API error (HTTP 404 Not Found): The specified model is not available for this API key. Tried: ${modelsToTry.joinToString()}."
-            429 -> "Gemini API rate limit exceeded."
-            else -> "Gemini API error (HTTP $lastResponseCode): $lastResponseBody"
+            400, 403 -> "Invalid Gemini API key or unauthorized request: $serverErrorSnippet"
+            404 -> "Gemini API error (HTTP 404 Not Found): $serverErrorSnippet (Tried: ${candidatesToTry.map { "${it.second}@${it.first}" }.joinToString()})"
+            429 -> "Gemini API rate limit exceeded: $serverErrorSnippet"
+            else -> "Gemini API error (HTTP $lastResponseCode): $serverErrorSnippet"
         }
         throw IllegalStateException(errorMsg)
     }

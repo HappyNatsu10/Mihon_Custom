@@ -61,6 +61,7 @@ import tachiyomi.domain.manga.model.applyFilter
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.updates.interactor.GetUpdates
 import tachiyomi.domain.updates.model.UpdatesWithRelations
+import tachiyomi.domain.updates.model.UpdatesDateFilter
 import tachiyomi.domain.updates.service.UpdatesPreferences
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
@@ -152,6 +153,7 @@ class UpdatesViewModel(
             )
                 .any { it != TriState.DISABLED } ||
                 prefs.filterExcludedScanlators ||
+                prefs.filterDateRange != UpdatesDateFilter.ALL ||
                 listOf(
                     prefs.filterIncludedCategories,
                     prefs.filterExcludedCategories,
@@ -167,13 +169,16 @@ class UpdatesViewModel(
         getUpdatesItemPreferenceFlow()
             .distinctUntilChanged()
             .flatMapLatest {
-                // CUSTOM: Feature A - If keepFullUpdatesHistory is enabled, do not filter by 3 months or limit to 500
-                val after = if (it.keepFullUpdatesHistory) {
-                    null
-                } else {
-                    Clock.System.now().minus(3, DateTimeUnit.MONTH, TimeZone.currentSystemDefault())
+                // CUSTOM: Feature A & Date Filter
+                val after = when {
+                    it.filterDateRange != UpdatesDateFilter.ALL -> {
+                        val days = it.filterDateRange.days ?: 90
+                        Clock.System.now().minus(days, DateTimeUnit.DAY, TimeZone.currentSystemDefault())
+                    }
+                    it.keepFullUpdatesHistory -> null
+                    else -> Clock.System.now().minus(3, DateTimeUnit.MONTH, TimeZone.currentSystemDefault())
                 }
-                val limit = if (it.keepFullUpdatesHistory) -1L else 500L
+                val limit = if (it.keepFullUpdatesHistory && it.filterDateRange == UpdatesDateFilter.ALL) -1L else 500L
 
                 getUpdates.subscribe(
                     after,
@@ -240,15 +245,27 @@ class UpdatesViewModel(
         preferences: ItemPreferences,
     ): List<UpdatesItem> {
         val filterDownloaded = preferences.filterDownloaded
+        val filterDateRange = preferences.filterDateRange
+        val dateCutoff = if (filterDateRange != UpdatesDateFilter.ALL) {
+            val days = filterDateRange.days ?: 90
+            Clock.System.now().minus(days, DateTimeUnit.DAY, TimeZone.currentSystemDefault())
+        } else null
 
         val filterFnDownloaded: (UpdatesItem) -> Boolean = {
             applyFilter(filterDownloaded) {
                 it.downloadStateProvider() == Download.State.DOWNLOADED
             }
         }
+        val filterFnDate: (UpdatesItem) -> Boolean = { item ->
+            if (dateCutoff != null) {
+                item.update.dateFetch >= dateCutoff
+            } else {
+                true
+            }
+        }
 
         return fastFilter {
-            filterFnDownloaded(it)
+            filterFnDownloaded(it) && filterFnDate(it)
         }
     }
 
@@ -479,15 +496,18 @@ class UpdatesViewModel(
 
     private fun getUpdatesItemPreferenceFlow(): Flow<ItemPreferences> {
         return combine(
-            updatesPreferences.filterDownloaded.changes(),
-            updatesPreferences.filterUnread.changes(),
-            updatesPreferences.filterStarted.changes(),
-            updatesPreferences.filterBookmarked.changes(),
-            updatesPreferences.filterExcludedScanlators.changes(),
-            updatesPreferences.filterIncludedCategories.changes(),
-            updatesPreferences.filterExcludedCategories.changes(),
-            updatesPreferences.keepFullUpdatesHistory.changes(),
-            updatesPreferences.groupUpdatesByManga.changes(),
+            listOf(
+                updatesPreferences.filterDownloaded.changes(),
+                updatesPreferences.filterUnread.changes(),
+                updatesPreferences.filterStarted.changes(),
+                updatesPreferences.filterBookmarked.changes(),
+                updatesPreferences.filterExcludedScanlators.changes(),
+                updatesPreferences.filterIncludedCategories.changes(),
+                updatesPreferences.filterExcludedCategories.changes(),
+                updatesPreferences.keepFullUpdatesHistory.changes(),
+                updatesPreferences.groupUpdatesByManga.changes(),
+                updatesPreferences.filterDateRange.changes(),
+            ),
         ) {
             @Suppress("UNCHECKED_CAST")
             ItemPreferences(
@@ -500,6 +520,7 @@ class UpdatesViewModel(
                 filterExcludedCategories = it[6] as List<Long>,
                 keepFullUpdatesHistory = it[7] as Boolean,
                 groupUpdatesByManga = it[8] as Boolean,
+                filterDateRange = it[9] as UpdatesDateFilter,
             )
         }
     }
@@ -533,6 +554,7 @@ class UpdatesViewModel(
         val filterExcludedCategories: List<Long>,
         val keepFullUpdatesHistory: Boolean,
         val groupUpdatesByManga: Boolean,
+        val filterDateRange: UpdatesDateFilter,
     )
 
     @Immutable

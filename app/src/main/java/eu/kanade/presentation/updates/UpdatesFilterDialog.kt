@@ -4,11 +4,13 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
@@ -23,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastForEachIndexed
 import eu.kanade.presentation.category.visualName
+import tachiyomi.domain.updates.model.UpdatesDateFilter
 import eu.kanade.presentation.components.TabbedDialog
 import eu.kanade.presentation.components.TabbedDialogPaddings
 import eu.kanade.tachiyomi.ui.updates.UpdatesSettingsViewModel
@@ -93,6 +96,43 @@ private fun ColumnScope.FilterSheet(
         state = filterBookmarked,
         onClick = { viewModel.toggleFilter(UpdatesPreferences::filterBookmarked) },
     )
+
+    HorizontalDivider(modifier = Modifier.padding(MaterialTheme.padding.small))
+
+    Text(
+        text = "Filter by date",
+        color = MaterialTheme.colorScheme.primary,
+        style = MaterialTheme.typography.labelMedium,
+        modifier = Modifier.padding(horizontal = SettingsItemsPaddings.Horizontal, vertical = 4.dp),
+    )
+
+    val filterDateRange by viewModel.updatesPreferences.filterDateRange.collectAsState()
+
+    val dateOptions = remember {
+        listOf(
+            UpdatesDateFilter.ALL to "All time",
+            UpdatesDateFilter.TODAY to "Today",
+            UpdatesDateFilter.LAST_3_DAYS to "3 days",
+            UpdatesDateFilter.LAST_7_DAYS to "7 days",
+            UpdatesDateFilter.LAST_30_DAYS to "30 days",
+            UpdatesDateFilter.LAST_3_MONTHS to "3 months",
+        )
+    }
+
+    FlowRow(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = SettingsItemsPaddings.Horizontal, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        dateOptions.forEach { (option, label) ->
+            FilterChip(
+                selected = filterDateRange == option,
+                onClick = { viewModel.updatesPreferences.filterDateRange.set(option) },
+                label = { Text(label) },
+            )
+        }
+    }
 
     HorizontalDivider(modifier = Modifier.padding(MaterialTheme.padding.small))
 

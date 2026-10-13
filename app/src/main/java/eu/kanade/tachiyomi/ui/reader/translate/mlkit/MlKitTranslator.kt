@@ -84,11 +84,13 @@ class MlKitTranslator : TextTranslator {
             }
 
             blocks.map { blockText ->
-                if (blockText.isBlank()) {
+                val normalized = normalizeMangaTextForTranslation(blockText)
+                if (normalized.isBlank()) {
                     ""
                 } else {
                     try {
-                        Tasks.await(translator.translate(blockText))
+                        val translated = Tasks.await(translator.translate(normalized))
+                        postProcessTranslatedText(translated)
                     } catch (e: Exception) {
                         logcat(LogPriority.WARN) { "Failed to translate block: $blockText - ${e.message}" }
                         blockText
@@ -102,5 +104,31 @@ class MlKitTranslator : TextTranslator {
                 logcat(LogPriority.WARN) { "Error closing ML Kit translator: ${e.message}" }
             }
         }
+    }
+
+    private fun normalizeMangaTextForTranslation(text: String): String {
+        var clean = text.trim()
+        if (clean.isBlank()) return ""
+
+        clean = clean.replace("ー{2,}".toRegex(), "ー")
+        clean = clean.replace("〜{2,}".toRegex(), "〜")
+        clean = clean.replace("[!！]{2,}".toRegex(), "！")
+        clean = clean.replace("[?？]{2,}".toRegex(), "？")
+        clean = clean.replace("[.．…]{2,}".toRegex(), "…")
+
+        if (clean.endsWith("っ") || clean.endsWith("ッ")) {
+            clean = clean.dropLast(1) + "！"
+        }
+
+        return clean
+    }
+
+    private fun postProcessTranslatedText(text: String): String {
+        var res = text.trim()
+        if (res.isBlank()) return ""
+        if (res[0].isLowerCase()) {
+            res = res.replaceFirstChar { it.uppercase() }
+        }
+        return res
     }
 }

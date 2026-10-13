@@ -125,12 +125,73 @@ class MlKitOcr : PageOcr {
                 box.bottom.toFloat() + offsetY,
             )
             val cornerPoints = block.cornerPoints?.map { android.graphics.PointF(it.x.toFloat(), it.y.toFloat() + offsetY) }
+
+            val cleanText = formatMangaText(block, rectF)
+            if (cleanText.isBlank()) return@mapNotNull null
+
             TextBlock(
-                text = block.text.trim(),
+                text = cleanText,
                 boundingBox = rectF,
                 cornerPoints = cornerPoints,
             )
         }
+    }
+
+    private fun formatMangaText(block: com.google.mlkit.vision.text.Text.TextBlock, rectF: RectF): String {
+        val lines = block.lines
+        if (lines.isEmpty()) return block.text.trim()
+
+        val blockWidth = rectF.width()
+        val blockHeight = rectF.height()
+
+        // Detect if speech bubble / block is vertical text (tate-gaki)
+        val isVertical = (blockHeight > blockWidth * 1.05f) || lines.any { line ->
+            val lb = line.boundingBox
+            lb != null && lb.height() > lb.width() * 1.3f
+        }
+
+        // In vertical Japanese/Chinese manga, text columns are read RIGHT to LEFT.
+        val sortedLines = if (isVertical && lines.size > 1) {
+            val minX = lines.minOfOrNull { it.boundingBox?.centerX() ?: 0 } ?: 0
+            val maxX = lines.maxOfOrNull { it.boundingBox?.centerX() ?: 0 } ?: 0
+            if ((maxX - minX) > 10) {
+                // Multi-column vertical text: rightmost column first
+                lines.sortedByDescending { it.boundingBox?.centerX() ?: 0 }
+            } else {
+                // Single vertical column
+                lines.sortedBy { it.boundingBox?.centerY() ?: 0 }
+            }
+        } else {
+            // Horizontal text: top to bottom
+            lines.sortedBy { it.boundingBox?.centerY() ?: 0 }
+        }
+
+        val rawJoined = sortedLines.joinToString("\n") { it.text.trim() }
+        val isJapaneseOrChinese = rawJoined.any { ch ->
+            val c = ch.code
+            (c in 0x3040..0x309F) || (c in 0x30A0..0x30FF) || (c in 0x4E00..0x9FFF)
+        }
+        val isKorean = rawJoined.any { ch ->
+            val c = ch.code
+            (c in 0xAC00..0xD7AF) || (c in 0x1100..0x11FF) || (c in 0x3130..0x318F)
+        }
+
+        return when {
+            isJapaneseOrChinese && !isKorean -> {
+                // Japanese and Chinese have no word spaces. Joining lines directly preserves words intact!
+                sortedLines.joinToString("") { line ->
+                    line.text.trim().replace("\\s+".toRegex(), "")
+                }
+            }
+            isKorean -> {
+                sortedLines.joinToString(" ") { it.text.trim() }
+                    .replace("\\s+".toRegex(), " ")
+            }
+            else -> {
+                sortedLines.joinToString(" ") { it.text.trim() }
+                    .replace("\\s+".toRegex(), " ")
+            }
+        }.trim()
     }
 
     /**

@@ -61,4 +61,10 @@ class UpdatesPreferences(
         "pref_group_updates_by_manga",
         true,
     )
+
+    // CUSTOM: Filter updates by date range
+    val filterDateRange: Preference<tachiyomi.domain.updates.model.UpdatesDateFilter> = preferenceStore.getEnum(
+        "pref_filter_updates_date_range",
+        tachiyomi.domain.updates.model.UpdatesDateFilter.ALL,
+    )
 }
