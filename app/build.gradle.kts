@@ -38,8 +38,8 @@ android {
         // CUSTOM: Changed application ID to avoid collision with official Mihon
         applicationId = "app.mihon.custom"
 
-        versionCode = 37
-        versionName = "0.21.1"
+        versionCode = 38
+        versionName = "0.21.2"
 
         // CUSTOM: Telemetry and updater disabled in custom personal fork
         buildConfigField("boolean", "TELEMETRY_INCLUDED", "false")
@@ -231,6 +231,7 @@ dependencies {
     debugImplementation(libs.androidx.compose.uiTooling)
     implementation(libs.androidx.compose.uiToolingPreview)
     implementation(libs.androidx.compose.uiUtil)
+    implementation(libs.androidx.navigationEvent)
 
     implementation(libs.androidx.interpolator)
 
