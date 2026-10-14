@@ -34,6 +34,7 @@ import tachiyomi.presentation.core.util.collectAsState
 
 private val providers = listOf(
     "mlkit" to MR.strings.pref_translation_provider_mlkit,
+    "cloudvision" to MR.strings.pref_translation_provider_cloud_vision,
     "gemini" to MR.strings.pref_translation_provider_llm,
 )
 
@@ -64,6 +65,7 @@ internal fun ColumnScope.TranslationSettingsPage(viewModel: ReaderSettingsViewMo
     val provider by viewModel.preferences.readerTranslationProvider.collectAsState()
     val sourceLang by viewModel.preferences.readerTranslationSource.collectAsState()
     val targetLang by viewModel.preferences.readerTranslationTarget.collectAsState()
+    val cloudVisionApiKey by viewModel.preferences.readerTranslationCloudVisionApiKey.collectAsState()
     val geminiApiKey by viewModel.preferences.readerTranslationGeminiApiKey.collectAsState()
     val geminiModel by viewModel.preferences.readerTranslationGeminiModel.collectAsState()
     val opacity by viewModel.preferences.readerTranslationOverlayOpacity.collectAsState()
@@ -109,6 +111,22 @@ internal fun ColumnScope.TranslationSettingsPage(viewModel: ReaderSettingsViewMo
                     label = { Text(name) },
                 )
             }
+        }
+
+        if (provider == "cloudvision") {
+            var cvApiKeyText by remember(cloudVisionApiKey) { mutableStateOf(cloudVisionApiKey) }
+            OutlinedTextField(
+                value = cvApiKeyText,
+                onValueChange = {
+                    cvApiKeyText = it
+                    viewModel.preferences.readerTranslationCloudVisionApiKey.set(it)
+                },
+                label = { Text(stringResource(MR.strings.pref_translation_cloud_vision_api_key)) },
+                singleLine = true,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = MaterialTheme.padding.medium, vertical = 4.dp),
+            )
         }
 
         if (provider == "gemini") {

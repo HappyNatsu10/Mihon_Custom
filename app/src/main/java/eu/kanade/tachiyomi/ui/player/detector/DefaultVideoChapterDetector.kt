@@ -97,8 +97,8 @@ class DefaultVideoChapterDetector(
             }
             val effectiveHeaders = buildEffectiveHeaders(source, url)
 
-            // If page has video extension or matches probe, or single-page video post
-            if (hasVideoExtension(url) || probeIsVideo(url, effectiveHeaders, networkHelper.client) || pages.size == 1) {
+            // If page has video extension or matches probe
+            if (hasVideoExtension(url) || probeIsVideo(url, effectiveHeaders, networkHelper.client)) {
                 val headersMap = effectiveHeaders.names().associateWith { effectiveHeaders[it].orEmpty() }
                 playlist.add(VideoTrack(index, url, headersMap))
             } else {
@@ -137,6 +137,10 @@ class DefaultVideoChapterDetector(
             "mp4", "m4v", "webm", "mkv", "mov", "m3u8", "mpd", "ts", "flv", "avi", "wmv", "3gp",
         )
 
+        val IMAGE_EXTENSIONS = setOf(
+            "jpg", "jpeg", "png", "webp", "avif", "gif", "bmp", "heic",
+        )
+
         val PROBE_CONTENT_TYPES = setOf(
             "application/vnd.apple.mpegurl",
             "application/x-mpegurl",
@@ -147,19 +151,21 @@ class DefaultVideoChapterDetector(
             if (url.isBlank()) return false
             val cleanUrl = url.substringBefore('?').substringBefore('#').lowercase()
             val ext = cleanUrl.substringAfterLast('.', "")
+
+            // Definitive image format check: images are never video streams
+            if (ext in IMAGE_EXTENSIONS) return false
+
             if (ext in VIDEO_EXTENSIONS) return true
 
-            // URL path pattern checks (e.g. DeviantArt /v/mp4/ or Pixiv video endpoints)
-            if (cleanUrl.contains("/v/mp4/") || cleanUrl.contains("/video/") || cleanUrl.contains("/mp4/")) {
+            // URL path pattern checks for known video endpoints (e.g. DeviantArt /v/mp4/)
+            if (cleanUrl.contains("/v/mp4/")) {
                 return true
             }
 
             // Query parameter or embedded format checks
             val lowerFullUrl = url.lowercase()
             for (videoExt in VIDEO_EXTENSIONS) {
-                if (lowerFullUrl.contains(".$videoExt?") ||
-                    lowerFullUrl.contains(".$videoExt&") ||
-                    lowerFullUrl.contains("format=$videoExt") ||
+                if (lowerFullUrl.contains("format=$videoExt") ||
                     lowerFullUrl.contains("ext=$videoExt") ||
                     lowerFullUrl.endsWith(".$videoExt")
                 ) {
@@ -244,6 +250,9 @@ class DefaultVideoChapterDetector(
                         val contentDisposition = response.header("Content-Disposition")?.lowercase().orEmpty()
                         if (VIDEO_EXTENSIONS.any { contentDisposition.contains(".$it") }) {
                             return true
+                        }
+                        if (contentType.startsWith("image/")) {
+                            return false
                         }
                     }
                 }

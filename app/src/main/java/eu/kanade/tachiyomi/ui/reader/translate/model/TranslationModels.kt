@@ -34,6 +34,7 @@ enum class SourceLanguage(val code: String, val displayName: String, val mlKitLa
 
 enum class TranslationProviderType(val id: String, val displayName: String) {
     ON_DEVICE_MLKIT("mlkit", "On-device (ML Kit)"),
+    CLOUD_VISION("cloudvision", "Cloud Vision (Google Cloud)"),
     LLM_GEMINI("gemini", "LLM Vision (Gemini)");
 
     companion object {

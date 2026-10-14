@@ -143,7 +143,27 @@ class UpdatesViewModel(
         }
     }
 
-    private val hasActiveFilters = getUpdatesItemPreferenceFlow()
+    private val itemPreferencesFlow = getUpdatesItemPreferenceFlow()
+        .distinctUntilChanged()
+        .flowOn(Dispatchers.Default)
+        .stateIn(
+            viewModelScope + subscriberGate,
+            SharingStarted.Eagerly,
+            ItemPreferences(
+                filterDownloaded = updatesPreferences.filterDownloaded.get(),
+                filterUnread = updatesPreferences.filterUnread.get(),
+                filterStarted = updatesPreferences.filterStarted.get(),
+                filterBookmarked = updatesPreferences.filterBookmarked.get(),
+                filterExcludedScanlators = updatesPreferences.filterExcludedScanlators.get(),
+                filterIncludedCategories = updatesPreferences.filterIncludedCategories.get(),
+                filterExcludedCategories = updatesPreferences.filterExcludedCategories.get(),
+                keepFullUpdatesHistory = updatesPreferences.keepFullUpdatesHistory.get(),
+                groupUpdatesByManga = updatesPreferences.groupUpdatesByManga.get(),
+                filterDateRange = updatesPreferences.filterDateRange.get(),
+            ),
+        )
+
+    private val hasActiveFilters = itemPreferencesFlow
         .map { prefs ->
             listOf(
                 prefs.filterUnread,
@@ -166,8 +186,7 @@ class UpdatesViewModel(
 
     private val updateItems = combine(
         // needed for SQL filters (unread, started, bookmarked, etc)
-        getUpdatesItemPreferenceFlow()
-            .distinctUntilChanged()
+        itemPreferencesFlow
             .flatMapLatest {
                 // CUSTOM: Feature A & Date Filter
                 val after = when {
@@ -194,7 +213,7 @@ class UpdatesViewModel(
         downloadCache.changes.pausedWhileUnsubscribed(),
         downloadManager.queueState.pausedWhileUnsubscribed(),
         // needed for Kotlin filters (downloaded)
-        getUpdatesItemPreferenceFlow().distinctUntilChanged { old, new ->
+        itemPreferencesFlow.distinctUntilChanged { old, new ->
             old.filterDownloaded == new.filterDownloaded
         },
     ) { updates, _, _, itemPreferences ->
@@ -210,7 +229,7 @@ class UpdatesViewModel(
         selectedChapterIds,
         queuedDownloadStates.pausedWhileUnsubscribed(),
         dialog,
-        combine(hasActiveFilters, getUpdatesItemPreferenceFlow(), expandedGroupKeys, ::Triple),
+        combine(hasActiveFilters, itemPreferencesFlow, expandedGroupKeys, ::Triple),
     ) { items, selectedIds, downloads, dialog, (hasActiveFilters, itemPreferences, expandedKeys) ->
         val mappedItems = items.orEmpty().map { item ->
             val downloadState = downloads[item.update.chapterId]
@@ -271,16 +290,30 @@ class UpdatesViewModel(
 
     private fun List<UpdatesWithRelations>.toUpdateItems(): List<UpdatesItem> {
         val queuedDownloads = downloadManager.getQueuedDownloadsByChapterId()
+        val mangaHasDownloadsCache = mutableMapOf<Pair<Long, String>, Boolean>()
+
         return this
             .map { update ->
                 val activeDownload = queuedDownloads[update.chapterId]
-                val downloaded = downloadManager.isChapterDownloaded(
-                    update.chapterName,
-                    update.scanlator,
-                    update.chapterUrl,
-                    update.mangaTitle,
-                    update.sourceId,
-                )
+                val downloaded = if (activeDownload != null) {
+                    false
+                } else {
+                    val key = Pair(update.sourceId, update.mangaTitle)
+                    val hasAnyDownloads = mangaHasDownloadsCache.getOrPut(key) {
+                        downloadManager.isMangaDownloaded(update.mangaTitle, update.sourceId)
+                    }
+                    if (hasAnyDownloads) {
+                        downloadManager.isChapterDownloaded(
+                            update.chapterName,
+                            update.scanlator,
+                            update.chapterUrl,
+                            update.mangaTitle,
+                            update.sourceId,
+                        )
+                    } else {
+                        false
+                    }
+                }
                 val downloadState = when {
                     activeDownload != null -> activeDownload.status
                     downloaded -> Download.State.DOWNLOADED

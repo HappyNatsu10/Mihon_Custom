@@ -40,6 +40,10 @@ fun ReaderBottomBar(
     isTranslating: Boolean = false,
     isTranslated: Boolean = false,
     onClickTranslate: () -> Unit = {},
+    // CUSTOM: TTS button
+    ttsEnabled: Boolean = true,
+    isSpeaking: Boolean = false,
+    onClickTts: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -67,6 +71,18 @@ fun ReaderBottomBar(
                         tint = if (isTranslated) MaterialTheme.colorScheme.primary else LocalContentColor.current,
                     )
                 }
+            }
+        }
+
+        if (ttsEnabled) {
+            IconButton(onClick = onClickTts) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_volume_up),
+                    contentDescription = stringResource(
+                        if (isSpeaking) MR.strings.action_tts_stop else MR.strings.action_tts,
+                    ),
+                    tint = if (isSpeaking) MaterialTheme.colorScheme.primary else LocalContentColor.current,
+                )
             }
         }
 

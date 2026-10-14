@@ -149,6 +149,7 @@ class ReaderActivity : BaseActivity() {
     // CUSTOM: Feature C - Translation state
     private var isTranslatingPage by mutableStateOf(false)
     private var showCloudTranslationPrivacyDialog by mutableStateOf(false)
+    private val ttsManager by lazy { eu.kanade.tachiyomi.ui.reader.tts.ReaderTtsManager(this) }
 
     /**
      * Called when the activity is created. Initializes the presenter and configuration.
@@ -377,6 +378,7 @@ class ReaderActivity : BaseActivity() {
      */
     override fun onDestroy() {
         super.onDestroy()
+        ttsManager.release()
         viewModel.state.value.viewer?.destroy()
         config = null
         menuToggleToast?.cancel()
@@ -384,6 +386,7 @@ class ReaderActivity : BaseActivity() {
     }
 
     override fun onPause() {
+        ttsManager.stop()
         viewModel.saveHistory()
         super.onPause()
     }
@@ -502,6 +505,7 @@ class ReaderActivity : BaseActivity() {
         val translationEnabled by readerPreferences.readerTranslationEnabled.collectAsState()
         val currentReaderPage = getCurrentReaderPage()
         val isTranslated = currentReaderPage?.isShowingTranslation == true
+        val isTtsSpeaking by ttsManager.isSpeaking.collectAsState()
 
         ReaderAppBars(
             visible = state.menuVisible,
@@ -581,6 +585,11 @@ class ReaderActivity : BaseActivity() {
             isTranslating = isTranslatingPage,
             isTranslated = isTranslated,
             onClickTranslate = ::toggleOrTranslateCurrentPage,
+
+            // CUSTOM: TTS button
+            ttsEnabled = true,
+            isSpeaking = isTtsSpeaking,
+            onClickTts = ::toggleTtsCurrentPage,
         )
     }
 
@@ -1062,10 +1071,14 @@ class ReaderActivity : BaseActivity() {
             return
         }
 
-        // 2. Check cloud provider confirmation if Gemini is selected
+        // 2. Check cloud provider confirmation if Gemini or Cloud Vision is selected
         val provider = readerPreferences.readerTranslationProvider.get()
-        if (provider == "gemini") {
-            val apiKey = readerPreferences.readerTranslationGeminiApiKey.get()
+        if (provider == "gemini" || provider == "cloudvision") {
+            val apiKey = if (provider == "gemini") {
+                readerPreferences.readerTranslationGeminiApiKey.get()
+            } else {
+                readerPreferences.readerTranslationCloudVisionApiKey.get()
+            }
             if (apiKey.isBlank()) {
                 toast(MR.strings.pref_translation_api_key_summary)
                 viewModel.openSettingsDialog()
@@ -1106,6 +1119,56 @@ class ReaderActivity : BaseActivity() {
                     logcat(LogPriority.ERROR) { "Failed to translate page: ${e.message}" }
                     val message = e.message ?: "Translation error"
                     toast(this@ReaderActivity.stringResource(MR.strings.translation_error, message))
+                }
+            }
+        }
+    }
+
+    private fun toggleTtsCurrentPage() {
+        if (ttsManager.isSpeaking.value) {
+            ttsManager.stop()
+            toast(MR.strings.action_tts_stop)
+            return
+        }
+
+        val page = getCurrentReaderPage() ?: return
+        val targetLang = readerPreferences.readerTranslationTarget.get()
+
+        if (!page.translatedText.isNullOrBlank()) {
+            toast(MR.strings.action_tts_speaking)
+            ttsManager.speak(page.translatedText.orEmpty(), targetLang)
+        } else if (!page.ocrText.isNullOrBlank()) {
+            val sourceLang = readerPreferences.readerTranslationSource.get()
+            toast(MR.strings.action_tts_speaking)
+            ttsManager.speak(page.ocrText.orEmpty(), if (sourceLang != "auto") sourceLang else null)
+        } else {
+            lifecycleScope.launch(Dispatchers.IO) {
+                try {
+                    val streamFn = page.stream ?: return@launch
+                    val bitmap = streamFn().use { android.graphics.BitmapFactory.decodeStream(it) } ?: return@launch
+                    try {
+                        val sourceLang = readerPreferences.readerTranslationSource.get()
+                        val blocks = eu.kanade.tachiyomi.ui.reader.translate.mlkit.MlKitOcr().recognize(
+                            bitmap,
+                            eu.kanade.tachiyomi.ui.reader.translate.model.SourceLanguage.fromCode(sourceLang),
+                        )
+                        val text = blocks.joinToString("\n") { it.text }
+                        page.ocrText = text
+                        if (text.isNotBlank()) {
+                            withContext(Dispatchers.Main) {
+                                toast(MR.strings.action_tts_speaking)
+                                ttsManager.speak(text, if (sourceLang != "auto") sourceLang else null)
+                            }
+                        } else {
+                            withContext(Dispatchers.Main) {
+                                toast(MR.strings.translation_no_text)
+                            }
+                        }
+                    } finally {
+                        if (!bitmap.isRecycled) bitmap.recycle()
+                    }
+                } catch (e: Throwable) {
+                    logcat(LogPriority.ERROR) { "Failed to extract text for TTS: ${e.message}" }
                 }
             }
         }

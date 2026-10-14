@@ -39,6 +39,12 @@ class TranslationPipeline(
 
     private val mlKitOcr: PageOcr by lazy { MlKitOcr() }
     private val mlKitTranslator: TextTranslator by lazy { MlKitTranslator() }
+    private val cloudVisionTranslator: eu.kanade.tachiyomi.ui.reader.translate.cloudvision.CloudVisionTranslator by lazy {
+        eu.kanade.tachiyomi.ui.reader.translate.cloudvision.CloudVisionTranslator(
+            okHttpClient = networkHelper.client,
+            apiKeyProvider = { readerPreferences.readerTranslationCloudVisionApiKey.get() },
+        )
+    }
     private val geminiTranslator: GeminiVisionTranslator by lazy {
         GeminiVisionTranslator(
             okHttpClient = networkHelper.client,
@@ -86,21 +92,34 @@ class TranslationPipeline(
             val blocks: List<TextBlock>
             val translatedTexts: List<String>
 
-            if (provider == "gemini") {
-                val pair = geminiTranslator.translatePage(originalBitmap, sourceLang, targetLang)
-                blocks = pair.first
-                translatedTexts = pair.second
-            } else {
-                blocks = mlKitOcr.recognize(originalBitmap, sourceLang)
-                if (blocks.isEmpty()) {
-                    throw NoTextFoundException("No text detected on page")
+            when (provider) {
+                "gemini" -> {
+                    val pair = geminiTranslator.translatePage(originalBitmap, sourceLang, targetLang)
+                    blocks = pair.first
+                    translatedTexts = pair.second
                 }
-                translatedTexts = mlKitTranslator.translate(blocks.map { it.text }, sourceLang, targetLang)
+                "cloudvision" -> {
+                    blocks = cloudVisionTranslator.recognize(originalBitmap)
+                    if (blocks.isEmpty()) {
+                        throw NoTextFoundException("No text detected on page")
+                    }
+                    translatedTexts = mlKitTranslator.translate(blocks.map { it.text }, sourceLang, targetLang)
+                }
+                else -> {
+                    blocks = mlKitOcr.recognize(originalBitmap, sourceLang)
+                    if (blocks.isEmpty()) {
+                        throw NoTextFoundException("No text detected on page")
+                    }
+                    translatedTexts = mlKitTranslator.translate(blocks.map { it.text }, sourceLang, targetLang)
+                }
             }
 
             if (blocks.isEmpty()) {
                 throw NoTextFoundException("No text detected on page")
             }
+
+            page.ocrText = blocks.joinToString("\n") { it.text }
+            page.translatedText = translatedTexts.joinToString("\n")
 
             val renderedBitmap = pageRenderer.render(
                 originalBitmap,

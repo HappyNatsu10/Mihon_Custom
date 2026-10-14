@@ -71,7 +71,7 @@ class PlayerViewModel(
 
     val mangaId: Long = savedState.get<Long>("manga") ?: -1L
     private val initialChapterId: Long = savedState.get<Long>("chapter") ?: -1L
-    private val forceVideo: Boolean = savedState.get<Boolean>("force_video") ?: false
+    private var forceVideo: Boolean = savedState.get<Boolean>("force_video") ?: false
 
     private val mutableState = MutableStateFlow(State())
     val state = mutableState.asStateFlow()
@@ -113,7 +113,14 @@ class PlayerViewModel(
     }
 
     suspend fun loadVideoChapter(chapterId: Long) = withContext(Dispatchers.IO) {
-        mutableState.update { it.copy(isLoading = true, error = null) }
+        mutableState.update {
+            it.copy(
+                isLoading = true,
+                error = null,
+                playlist = emptyList(),
+                currentTrackIndex = 0,
+            )
+        }
         currentChapterId = chapterId
         sessionStartTime = Clock.System.now()
 
@@ -152,7 +159,7 @@ class PlayerViewModel(
                     }
                     val playlist = rawPages.mapIndexedNotNull { index, page ->
                         val url = page.imageUrl ?: page.url
-                        if (url.isNotBlank()) {
+                        if (url.isNotBlank() && DefaultVideoChapterDetector.hasVideoExtension(url)) {
                             val effHeaders = DefaultVideoChapterDetector.buildEffectiveHeaders(httpSource, url)
                             val headersMap = effHeaders.names().associateWith { effHeaders[it].orEmpty() }
                             VideoTrack(index, url, headersMap)
@@ -298,6 +305,29 @@ class PlayerViewModel(
     fun retry() {
         viewModelScope.launch {
             loadVideoChapter(currentChapterId)
+        }
+    }
+
+    fun loadNewChapterFromIntent(newMangaId: Long, newChapterId: Long, force: Boolean) {
+        forceVideo = force
+        viewModelScope.launch(Dispatchers.IO) {
+            mutableState.update {
+                it.copy(
+                    isLoading = true,
+                    error = null,
+                    playlist = emptyList(),
+                    currentTrackIndex = 0,
+                )
+            }
+            if (newMangaId != mangaId) {
+                val manga = getManga.await(newMangaId) ?: return@launch
+                source = sourceManager.getOrStub(manga.source) as? HttpSource
+                incognitoMode = getIncognitoState.await(manga.source)
+                val rawChapters = getChaptersByMangaId.await(newMangaId)
+                allChapters = rawChapters.sortedWith(getChapterSort(manga, sortDescending = false))
+                mutableState.update { it.copy(manga = manga) }
+            }
+            loadVideoChapter(newChapterId)
         }
     }
 

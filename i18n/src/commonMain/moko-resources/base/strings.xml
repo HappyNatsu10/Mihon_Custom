@@ -1153,5 +1153,13 @@
     <string name="video_fullscreen">Fullscreen</string>
     <string name="video_fit_screen">Fit to screen</string>
     <string name="video_fill_screen">Fill screen</string>
+    <string name="video_rotate">Rotate screen</string>
+    <string name="video_orientation_portrait">Portrait</string>
+    <string name="video_orientation_landscape">Landscape</string>
     <string name="action_open_in_reader">Open in Reader</string>
+    <string name="pref_translation_provider_cloud_vision">Cloud Vision</string>
+    <string name="pref_translation_cloud_vision_api_key">Cloud Vision API key</string>
+    <string name="action_tts">Text-to-speech</string>
+    <string name="action_tts_stop">Stop speech</string>
+    <string name="action_tts_speaking">Speaking page text…</string>
 </resources>

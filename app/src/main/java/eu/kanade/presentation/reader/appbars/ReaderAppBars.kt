@@ -81,6 +81,10 @@ fun ReaderAppBars(
     isTranslating: Boolean = false,
     isTranslated: Boolean = false,
     onClickTranslate: () -> Unit = {},
+    // CUSTOM: TTS parameters
+    ttsEnabled: Boolean = true,
+    isSpeaking: Boolean = false,
+    onClickTts: () -> Unit = {},
 ) {
     val backgroundColor = MaterialTheme.colorScheme
         .surfaceColorAtElevation(3.dp)
@@ -186,6 +190,10 @@ fun ReaderAppBars(
                     isTranslating = isTranslating,
                     isTranslated = isTranslated,
                     onClickTranslate = onClickTranslate,
+                    // CUSTOM: TTS parameters
+                    ttsEnabled = ttsEnabled,
+                    isSpeaking = isSpeaking,
+                    onClickTts = onClickTts,
                 )
             }
         }

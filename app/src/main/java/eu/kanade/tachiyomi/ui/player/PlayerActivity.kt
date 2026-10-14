@@ -12,6 +12,7 @@ import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import android.content.res.Configuration
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.animation.AnimatedVisibility
@@ -25,14 +26,19 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -103,6 +109,7 @@ import mihon.core.metro.metroGraph
 import mihon.icons.materialsymbols.MaterialSymbols
 import mihon.icons.materialsymbols.automirroredrounded.ArrowBack
 import mihon.icons.materialsymbols.rounded.Bookmark
+import mihon.icons.materialsymbols.rounded.MobileRotate
 import mihon.icons.materialsymbols.rounded.MoreVert
 import mihon.icons.materialsymbols.rounded.SkipNext
 import mihon.icons.materialsymbols.rounded.SkipPrevious
@@ -157,6 +164,8 @@ class PlayerActivity : AppCompatActivity() {
             .onEach { event ->
                 when (event) {
                     is PlayerViewModel.Event.NavigateToReader -> {
+                        exoPlayer?.stop()
+                        exoPlayer?.clearMediaItems()
                         startActivity(ReaderActivity.newIntent(this, event.mangaId, event.chapterId))
                         finish()
                     }
@@ -173,7 +182,30 @@ class PlayerActivity : AppCompatActivity() {
                 onFinish = { finish() },
                 onToggleSystemBars = ::setSystemBarsVisible,
                 onOpenManga = ::openMangaScreen,
+                onToggleOrientation = ::toggleOrientation,
             )
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        exoPlayer?.stop()
+        exoPlayer?.clearMediaItems()
+        val newMangaId = intent.getLongExtra("manga", -1L)
+        val newChapterId = intent.getLongExtra("chapter", -1L)
+        val force = intent.getBooleanExtra("force_video", false)
+        if (newMangaId != -1L && newChapterId != -1L) {
+            viewModel.loadNewChapterFromIntent(newMangaId, newChapterId, force)
+        }
+    }
+
+    fun toggleOrientation() {
+        val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        requestedOrientation = if (isLandscape) {
+            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        } else {
+            ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         }
     }
 
@@ -274,7 +306,7 @@ class PlayerActivity : AppCompatActivity() {
                 putExtra("manga", mangaId)
                 putExtra("chapter", chapterId)
                 putExtra("force_video", forceVideo)
-                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
             }
         }
     }
@@ -288,6 +320,7 @@ fun PlayerScreen(
     onFinish: () -> Unit,
     onToggleSystemBars: (Boolean) -> Unit,
     onOpenManga: () -> Unit,
+    onToggleOrientation: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var player by remember { mutableStateOf<ExoPlayer?>(null) }
@@ -358,6 +391,8 @@ fun PlayerScreen(
     val context = LocalContext.current
     LaunchedEffect(state.playlist, state.currentChapter?.id) {
         val p = player ?: return@LaunchedEffect
+        p.stop()
+        p.clearMediaItems()
         if (state.playlist.isNotEmpty()) {
             playbackError = null
             val mediaSources = state.playlist.map { track ->
@@ -561,8 +596,10 @@ fun PlayerScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .statusBarsPadding()
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                        .windowInsetsPadding(
+                            WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top),
+                        )
+                        .padding(start = 12.dp, end = 16.dp, top = 6.dp, bottom = 6.dp)
                         .align(Alignment.TopCenter),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -574,7 +611,7 @@ fun PlayerScreen(
                         )
                     }
 
-                    Spacer(modifier = Modifier.width(4.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
 
                     Column(
                         modifier = Modifier
@@ -617,6 +654,15 @@ fun PlayerScreen(
                         }
                     }
 
+                    // Screen Rotation Toggle
+                    IconButton(onClick = onToggleOrientation) {
+                        Icon(
+                            imageVector = MaterialSymbols.Rounded.MobileRotate,
+                            contentDescription = stringResource(MR.strings.video_rotate),
+                            tint = Color.White,
+                        )
+                    }
+
                     // Fullscreen / Zoom Mode Toggle
                     IconButton(
                         onClick = {
@@ -652,9 +698,9 @@ fun PlayerScreen(
                         )
                     }
 
-                    // Overflow Menu
+                    // Overflow Menu (comfortably spaced from device gesture / back button area)
                     var showOverflowMenu by remember { mutableStateOf(false) }
-                    Box {
+                    Box(modifier = Modifier.padding(end = 4.dp)) {
                         IconButton(onClick = { showOverflowMenu = !showOverflowMenu }) {
                             Icon(
                                 imageVector = MaterialSymbols.Rounded.MoreVert,
@@ -855,6 +901,15 @@ fun PlayerScreen(
                                     )
                                 }
                             }
+                        }
+
+                        // Rotation Toggle in Bottom Controls
+                        IconButton(onClick = onToggleOrientation) {
+                            Icon(
+                                imageVector = MaterialSymbols.Rounded.MobileRotate,
+                                contentDescription = stringResource(MR.strings.video_rotate),
+                                tint = Color.White,
+                            )
                         }
 
                         // Fullscreen / Zoom Toggle in Bottom Controls

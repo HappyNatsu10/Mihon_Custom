@@ -17,6 +17,8 @@ open class ReaderPage(
     // CUSTOM: Feature C - In-reader translation
     var translatedFile: File? = null
     var isShowingTranslation: Boolean = false
+    var ocrText: String? = null
+    var translatedText: String? = null
 
     fun getEffectiveStream(): (() -> InputStream)? {
         val file = translatedFile

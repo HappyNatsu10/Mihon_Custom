@@ -238,6 +238,11 @@ class ReaderPreferences(
         "",
     )
 
+    val readerTranslationCloudVisionApiKey: Preference<String> = preferenceStore.getString(
+        "pref_reader_translation_cloud_vision_api_key",
+        "",
+    )
+
     val readerTranslationCloudConfirmed: Preference<Boolean> = preferenceStore.getBoolean(
         "pref_reader_translation_cloud_confirmed",
         false,

@@ -212,6 +212,10 @@ class DownloadManager(
         return cache.isChapterDownloaded(chapterName, chapterScanlator, chapterUrl, mangaTitle, sourceId)
     }
 
+    fun isMangaDownloaded(mangaTitle: String, sourceId: Long): Boolean {
+        return cache.isMangaDownloaded(mangaTitle, sourceId)
+    }
+
     /**
      * Returns true if the chapter is present on disk, bypassing the directory cache.
      *

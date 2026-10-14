@@ -181,6 +181,15 @@ class DownloadCache(
     }
 
     /**
+     * Fast check to see if any chapters exist for the given manga.
+     */
+    fun isMangaDownloaded(mangaTitle: String, sourceId: Long): Boolean {
+        renewCache()
+        val mangaDir = rootDownloadsDir.sourceDirs[sourceId]?.mangaDirs?.get(provider.getMangaDirName(mangaTitle))
+        return mangaDir != null && mangaDir.chapterDirs.isNotEmpty()
+    }
+
+    /**
      * Returns the amount of downloaded chapters.
      */
     fun getTotalDownloadCount(): Int {
