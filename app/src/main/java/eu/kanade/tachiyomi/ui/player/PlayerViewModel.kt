@@ -129,10 +129,17 @@ class PlayerViewModel(
             return@withContext
         }
 
+        val chapterUrl = try {
+            httpSource.getChapterUrl(chapter.toSChapter())
+        } catch (e: Throwable) {
+            logcat(LogPriority.ERROR) { "Failed to get chapter URL for player: ${e.message}" }
+            null
+        }
+
         val detection = videoChapterDetector.detect(httpSource, chapter)
         when (detection) {
             is VideoDetectionResult.Video -> {
-                applyVideoPlaylist(chapter, detection.playlist)
+                applyVideoPlaylist(chapter, detection.playlist, chapterUrl)
             }
             VideoDetectionResult.NotVideo -> {
                 if (forceVideo && chapterId == initialChapterId) {
@@ -152,7 +159,7 @@ class PlayerViewModel(
                         } else null
                     }
                     if (playlist.isNotEmpty()) {
-                        applyVideoPlaylist(chapter, playlist)
+                        applyVideoPlaylist(chapter, playlist, chapterUrl)
                     } else {
                         eventChannel.send(Event.NavigateToReader(mangaId, chapterId))
                     }
@@ -164,7 +171,7 @@ class PlayerViewModel(
         }
     }
 
-    private fun applyVideoPlaylist(chapter: Chapter, playlist: List<VideoTrack>) {
+    private fun applyVideoPlaylist(chapter: Chapter, playlist: List<VideoTrack>, chapterUrl: String?) {
         val currentIndex = allChapters.indexOf(chapter)
         val hasNext = currentIndex < allChapters.lastIndex
         val hasPrev = currentIndex > 0
@@ -186,6 +193,30 @@ class PlayerViewModel(
                 hasNextChapter = hasNext,
                 hasPreviousChapter = hasPrev,
                 error = null,
+                bookmarked = chapter.bookmark,
+                chapterUrl = chapterUrl,
+            )
+        }
+    }
+
+    fun toggleChapterBookmark() {
+        val chapter = state.value.currentChapter ?: return
+        val newBookmark = !chapter.bookmark
+        val updatedChapter = chapter.copy(bookmark = newBookmark)
+
+        allChapters = allChapters.map { if (it.id == chapter.id) updatedChapter else it }
+        mutableState.update {
+            it.copy(
+                currentChapter = updatedChapter,
+                bookmarked = newBookmark,
+            )
+        }
+
+        appScope.launch(Dispatchers.IO) {
+            updateChapter.await(
+                ChapterUpdate(chapter.id) {
+                    bookmark = newBookmark
+                },
             )
         }
     }
@@ -280,6 +311,8 @@ class PlayerViewModel(
         val error: String? = null,
         val hasNextChapter: Boolean = false,
         val hasPreviousChapter: Boolean = false,
+        val bookmarked: Boolean = false,
+        val chapterUrl: String? = null,
     )
 
     sealed interface Event {

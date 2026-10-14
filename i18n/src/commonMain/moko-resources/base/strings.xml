@@ -1150,4 +1150,8 @@
     <string name="video_player_retry">Retry</string>
     <string name="video_part_indicator">Part %1$d of %2$d</string>
     <string name="video_playback_speed_title">Playback speed</string>
+    <string name="video_fullscreen">Fullscreen</string>
+    <string name="video_fit_screen">Fit to screen</string>
+    <string name="video_fill_screen">Fill screen</string>
+    <string name="action_open_in_reader">Open in Reader</string>
 </resources>

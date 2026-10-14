@@ -7,6 +7,7 @@ import android.content.IntentFilter
 import android.content.pm.ActivityInfo
 import android.media.AudioManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.compose.setContent
@@ -17,6 +18,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,8 +28,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
@@ -61,6 +65,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.net.toUri
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.MediaItem
@@ -71,13 +78,19 @@ import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import dev.zacsweers.metro.Inject
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.tachiyomi.R
+import eu.kanade.tachiyomi.ui.main.MainActivity
 import eu.kanade.tachiyomi.ui.player.helper.VideoProgressHelper
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
+import eu.kanade.tachiyomi.ui.webview.WebViewActivity
+import eu.kanade.tachiyomi.util.system.openInBrowser
+import eu.kanade.tachiyomi.util.system.toShareIntent
+import eu.kanade.tachiyomi.util.system.toast
 import eu.kanade.tachiyomi.util.view.setComposeContent
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.launchIn
@@ -89,8 +102,12 @@ import mihon.app.di.AppGraph
 import mihon.core.metro.metroGraph
 import mihon.icons.materialsymbols.MaterialSymbols
 import mihon.icons.materialsymbols.automirroredrounded.ArrowBack
+import mihon.icons.materialsymbols.rounded.Bookmark
+import mihon.icons.materialsymbols.rounded.MoreVert
 import mihon.icons.materialsymbols.rounded.SkipNext
 import mihon.icons.materialsymbols.rounded.SkipPrevious
+import mihon.icons.materialsymbols.roundedfilled.Bookmark
+import tachiyomi.core.common.Constants
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.stringResource
 
@@ -105,6 +122,8 @@ class PlayerActivity : AppCompatActivity() {
 
     private var exoPlayer: ExoPlayer? = null
     private var isPlayerReleased = false
+    private val windowInsetsController by lazy { WindowInsetsControllerCompat(window, window.decorView) }
+    private var isControlsVisible = true
 
     private val noisyReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -117,6 +136,10 @@ class PlayerActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         graph.inject(this)
         enableEdgeToEdge()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+        }
+        windowInsetsController.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
 
         super.onCreate(savedInstanceState)
 
@@ -148,8 +171,37 @@ class PlayerActivity : AppCompatActivity() {
                 onGetPlayer = { getOrCreatePlayer() },
                 onReleasePlayer = { releasePlayer() },
                 onFinish = { finish() },
+                onToggleSystemBars = ::setSystemBarsVisible,
+                onOpenManga = ::openMangaScreen,
             )
         }
+    }
+
+    fun setSystemBarsVisible(visible: Boolean) {
+        isControlsVisible = visible
+        if (visible) {
+            windowInsetsController.show(WindowInsetsCompat.Type.systemBars())
+        } else {
+            windowInsetsController.hide(WindowInsetsCompat.Type.systemBars())
+        }
+    }
+
+    private fun openMangaScreen() {
+        val mangaId = viewModel.mangaId
+        if (mangaId != -1L) {
+            startActivity(
+                Intent(this, MainActivity::class.java).apply {
+                    action = Constants.SHORTCUT_MANGA
+                    putExtra(Constants.MANGA_EXTRA, mangaId)
+                    addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                },
+            )
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        setSystemBarsVisible(isControlsVisible)
     }
 
     private fun getOrCreatePlayer(): ExoPlayer {
@@ -234,6 +286,8 @@ fun PlayerScreen(
     onGetPlayer: () -> ExoPlayer,
     onReleasePlayer: () -> Unit,
     onFinish: () -> Unit,
+    onToggleSystemBars: (Boolean) -> Unit,
+    onOpenManga: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var player by remember { mutableStateOf<ExoPlayer?>(null) }
@@ -244,8 +298,14 @@ fun PlayerScreen(
     var durationMs by remember { mutableLongStateOf(0L) }
     var controlsVisible by remember { mutableStateOf(true) }
     var showSpeedDialog by remember { mutableStateOf(false) }
+    var isZoomMode by remember { mutableStateOf(false) }
 
     val skipSeconds = viewModel.readerPreferences.videoSkipInterval.get()
+
+    // Control system bars (immersive full-screen)
+    LaunchedEffect(controlsVisible) {
+        onToggleSystemBars(controlsVisible)
+    }
 
     // Initialize ExoPlayer and bind listeners
     DisposableEffect(Unit) {
@@ -382,16 +442,26 @@ fun PlayerScreen(
             .fillMaxSize()
             .background(Color.Black),
     ) {
-        // Media3 Video Surface
+        // Media3 Video Surface with aspect ratio / fullscreen resize mode
         AndroidView(
             factory = { ctx ->
                 PlayerView(ctx).apply {
                     this.player = player
                     useController = false
+                    resizeMode = if (isZoomMode) {
+                        AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                    } else {
+                        AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    }
                 }
             },
             update = { view ->
                 view.player = player
+                view.resizeMode = if (isZoomMode) {
+                    AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                } else {
+                    AspectRatioFrameLayout.RESIZE_MODE_FIT
+                }
             },
             modifier = Modifier.fillMaxSize(),
         )
@@ -466,7 +536,7 @@ fun PlayerScreen(
                             },
                         ) {
                             Text(
-                                text = "Open in Reader",
+                                text = stringResource(MR.strings.action_open_in_reader),
                                 color = Color.White,
                             )
                         }
@@ -487,25 +557,30 @@ fun PlayerScreen(
                     .fillMaxSize()
                     .background(Color.Black.copy(alpha = 0.45f)),
             ) {
-                // Top Bar
+                // Top Bar (matching ReaderTopBar actions and icons)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 16.dp, start = 16.dp, end = 16.dp)
+                        .statusBarsPadding()
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
                         .align(Alignment.TopCenter),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     IconButton(onClick = onFinish) {
                         Icon(
                             imageVector = MaterialSymbols.AutoMirroredRounded.ArrowBack,
-                            contentDescription = "Back",
+                            contentDescription = stringResource(MR.strings.action_bar_up_description),
                             tint = Color.White,
                         )
                     }
 
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
 
-                    Column(modifier = Modifier.weight(1f)) {
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable(onClick = onOpenManga),
+                    ) {
                         Text(
                             text = state.manga?.title.orEmpty(),
                             color = Color.White,
@@ -527,7 +602,7 @@ fun PlayerScreen(
                         Surface(
                             color = MaterialTheme.colorScheme.primaryContainer,
                             shape = CircleShape,
-                            modifier = Modifier.padding(start = 8.dp),
+                            modifier = Modifier.padding(horizontal = 4.dp),
                         ) {
                             Text(
                                 text = stringResource(
@@ -537,7 +612,93 @@ fun PlayerScreen(
                                 ),
                                 color = MaterialTheme.colorScheme.onPrimaryContainer,
                                 fontSize = 12.sp,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            )
+                        }
+                    }
+
+                    // Fullscreen / Zoom Mode Toggle
+                    IconButton(
+                        onClick = {
+                            isZoomMode = !isZoomMode
+                            context.toast(if (isZoomMode) MR.strings.video_fill_screen else MR.strings.video_fit_screen)
+                        },
+                    ) {
+                        Icon(
+                            painter = painterResource(if (isZoomMode) R.drawable.ic_fullscreen_exit else R.drawable.ic_fullscreen),
+                            contentDescription = stringResource(if (isZoomMode) MR.strings.video_fit_screen else MR.strings.video_fullscreen),
+                            tint = Color.White,
+                        )
+                    }
+
+                    // Bookmark Action
+                    IconButton(
+                        onClick = { viewModel.toggleChapterBookmark() },
+                    ) {
+                        Icon(
+                            imageVector = if (state.bookmarked) {
+                                MaterialSymbols.RoundedFilled.Bookmark
+                            } else {
+                                MaterialSymbols.Rounded.Bookmark
+                            },
+                            contentDescription = stringResource(
+                                if (state.bookmarked) {
+                                    MR.strings.action_remove_bookmark
+                                } else {
+                                    MR.strings.action_bookmark
+                                },
+                            ),
+                            tint = if (state.bookmarked) MaterialTheme.colorScheme.primary else Color.White,
+                        )
+                    }
+
+                    // Overflow Menu
+                    var showOverflowMenu by remember { mutableStateOf(false) }
+                    Box {
+                        IconButton(onClick = { showOverflowMenu = !showOverflowMenu }) {
+                            Icon(
+                                imageVector = MaterialSymbols.Rounded.MoreVert,
+                                contentDescription = stringResource(MR.strings.action_menu_overflow_description),
+                                tint = Color.White,
+                            )
+                        }
+
+                        DropdownMenu(
+                            expanded = showOverflowMenu,
+                            onDismissRequest = { showOverflowMenu = false },
+                        ) {
+                            state.chapterUrl?.let { url ->
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(MR.strings.action_open_in_web_view)) },
+                                    onClick = {
+                                        showOverflowMenu = false
+                                        val manga = state.manga ?: return@DropdownMenuItem
+                                        val intent = WebViewActivity.newIntent(context, url, manga.source, manga.title)
+                                        context.startActivity(intent)
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(MR.strings.action_open_in_browser)) },
+                                    onClick = {
+                                        showOverflowMenu = false
+                                        context.openInBrowser(url.toUri(), forceDefaultBrowser = false)
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(MR.strings.action_share)) },
+                                    onClick = {
+                                        showOverflowMenu = false
+                                        val intent = url.toUri().toShareIntent(context, type = "text/plain")
+                                        context.startActivity(intent)
+                                    },
+                                )
+                            }
+                            DropdownMenuItem(
+                                text = { Text(stringResource(MR.strings.action_open_in_reader)) },
+                                onClick = {
+                                    showOverflowMenu = false
+                                    viewModel.openInReader()
+                                },
                             )
                         }
                     }
@@ -612,7 +773,8 @@ fun PlayerScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 16.dp)
+                        .navigationBarsPadding()
+                        .padding(horizontal = 24.dp, vertical = 12.dp)
                         .align(Alignment.BottomCenter),
                 ) {
                     // Time and Duration
@@ -693,6 +855,20 @@ fun PlayerScreen(
                                     )
                                 }
                             }
+                        }
+
+                        // Fullscreen / Zoom Toggle in Bottom Controls
+                        IconButton(
+                            onClick = {
+                                isZoomMode = !isZoomMode
+                                context.toast(if (isZoomMode) MR.strings.video_fill_screen else MR.strings.video_fit_screen)
+                            },
+                        ) {
+                            Icon(
+                                painter = painterResource(if (isZoomMode) R.drawable.ic_fullscreen_exit else R.drawable.ic_fullscreen),
+                                contentDescription = stringResource(if (isZoomMode) MR.strings.video_fit_screen else MR.strings.video_fullscreen),
+                                tint = Color.White,
+                            )
                         }
 
                         // Next Chapter
