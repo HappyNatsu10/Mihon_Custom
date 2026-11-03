@@ -44,7 +44,9 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.presentation.util.Screen
 import eu.kanade.tachiyomi.util.system.toast
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import mihon.app.di.AppGraph
 import mihon.core.metro.metroGraph
 import mihon.feature.readaloud.client.ElevenLabsClient
@@ -100,17 +102,19 @@ class ReadAloudSettingsScreen : Screen() {
         var isTestingVoice by remember { mutableStateOf(false) }
 
         LaunchedEffect(elevenLabsApiKey) {
-            if (elevenLabsApiKey.isNotBlank()) {
+            val key = elevenLabsApiKey.trim().trim('"', '\'')
+            if (key.isNotBlank()) {
                 isFetchingVoices = true
                 isFetchingSubscription = true
-                try {
-                    availableVoices = pipeline.elevenLabsClient.fetchVoices()
-                } catch (_: Exception) {}
+                val voices = withContext(Dispatchers.IO) {
+                    pipeline.elevenLabsClient.fetchVoices()
+                }
+                val sub = withContext(Dispatchers.IO) {
+                    pipeline.elevenLabsClient.fetchSubscription()
+                }
+                availableVoices = voices
+                subscription = sub
                 isFetchingVoices = false
-
-                try {
-                    subscription = pipeline.elevenLabsClient.fetchSubscription()
-                } catch (_: Exception) {}
                 isFetchingSubscription = false
             } else {
                 availableVoices = emptyList()
@@ -331,8 +335,10 @@ class ReadAloudSettingsScreen : Screen() {
                                                     onClick = {
                                                         scope.launch {
                                                             isFetchingSubscription = true
-                                                            subscription =
+                                                            val sub = withContext(Dispatchers.IO) {
                                                                 pipeline.elevenLabsClient.fetchSubscription()
+                                                            }
+                                                            subscription = sub
                                                             isFetchingSubscription = false
                                                         }
                                                     },
@@ -358,12 +364,14 @@ class ReadAloudSettingsScreen : Screen() {
                                                                     elevenLabsModel.ifBlank { defaultModel }
                                                                 val testPhrase =
                                                                     "Hello! ElevenLabs voice is working properly."
-                                                                pipeline.elevenLabsClient.textToSpeech(
-                                                                    text = testPhrase,
-                                                                    voiceId = voiceId,
-                                                                    modelId = modelId,
-                                                                    outputFile = testFile,
-                                                                )
+                                                                withContext(Dispatchers.IO) {
+                                                                    pipeline.elevenLabsClient.textToSpeech(
+                                                                        text = testPhrase,
+                                                                        voiceId = voiceId,
+                                                                        modelId = modelId,
+                                                                        outputFile = testFile,
+                                                                    )
+                                                                }
                                                                 pipeline.player.playAudioFile(
                                                                     file = testFile,
                                                                     turns = listOf(

@@ -1,6 +1,8 @@
 package mihon.feature.readaloud.client
 
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -38,7 +40,7 @@ class ElevenLabsClient(
     }
 
     private fun getApiKey(): String {
-        val apiKey = apiKeyProvider().trim()
+        val apiKey = apiKeyProvider().trim().trim('"', '\'')
         if (apiKey.isBlank()) {
             throw ElevenLabsException("ElevenLabs API Key is missing. Please set it in Settings -> Read aloud.")
         }
@@ -49,13 +51,13 @@ class ElevenLabsClient(
         val detailMsg = try {
             val root = Json.parseToJsonElement(bodyString).jsonObject
             val detail = root["detail"]
-            when (detail) {
-                is JsonObject -> {
+            when {
+                detail is JsonObject -> {
                     detail["message"]?.jsonPrimitive?.content
                         ?: detail["status"]?.jsonPrimitive?.content
                         ?: ""
                 }
-                is JsonPrimitive -> detail.content
+                detail is JsonPrimitive -> detail.content
                 else -> ""
             }
         } catch (_: Exception) {
@@ -98,21 +100,22 @@ class ElevenLabsClient(
         return ElevenLabsException(message, code)
     }
 
-    suspend fun fetchSubscription(): ElevenLabsSubscription? {
-        val apiKey = apiKeyProvider().trim()
-        if (apiKey.isBlank()) return null
+    suspend fun fetchSubscription(): ElevenLabsSubscription? = withContext(Dispatchers.IO) {
+        val apiKey = apiKeyProvider().trim().trim('"', '\'')
+        if (apiKey.isBlank()) return@withContext null
 
         val request = Request.Builder()
             .url("$baseUrl/v1/user/subscription")
             .header("xi-api-key", apiKey)
+            .header("Accept", "application/json")
             .get()
             .build()
 
-        return try {
+        try {
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
                     logcat(LogPriority.WARN) { "Failed to fetch ElevenLabs subscription (HTTP ${response.code})" }
-                    return null
+                    return@withContext null
                 }
                 val bodyStr = response.body.string()
                 val json = Json.parseToJsonElement(bodyStr).jsonObject
@@ -136,7 +139,7 @@ class ElevenLabsClient(
         modelId: String = DEFAULT_MODEL_ID,
         outputFile: File,
         append: Boolean = false,
-    ): File {
+    ): File = withContext(Dispatchers.IO) {
         val apiKey = getApiKey()
         val targetVoiceId = voiceId.ifBlank { DEFAULT_NARRATOR_VOICE_ID }
 
@@ -156,6 +159,7 @@ class ElevenLabsClient(
             .url("$baseUrl/v1/text-to-speech/$targetVoiceId?output_format=mp3_44100_128")
             .header("xi-api-key", apiKey)
             .header("Content-Type", "application/json")
+            .header("Accept", "audio/mpeg")
             .post(bodyJson.toString().toRequestBody("application/json".toMediaType()))
             .build()
 
@@ -172,7 +176,7 @@ class ElevenLabsClient(
                         FileOutputStream(outputFile, append).use { out ->
                             body.byteStream().copyTo(out)
                         }
-                        return outputFile
+                        return@withContext outputFile
                     }
 
                     val errString = response.body.string()
@@ -199,6 +203,7 @@ class ElevenLabsClient(
                 }
             }
         }
+        throw ElevenLabsException("Synthesis failed unexpectedly.")
     }
 
     suspend fun textToDialogue(
@@ -208,7 +213,7 @@ class ElevenLabsClient(
         languageCode: String = "en",
         modelId: String = "eleven_v3",
         outputFile: File,
-    ): File {
+    ): File = withContext(Dispatchers.IO) {
         val apiKey = getApiKey()
 
         val bodyJson = buildJsonObject {
@@ -247,6 +252,7 @@ class ElevenLabsClient(
             .url("$baseUrl/v1/text-to-dialogue?output_format=mp3_44100_128")
             .header("xi-api-key", apiKey)
             .header("Content-Type", "application/json")
+            .header("Accept", "audio/mpeg")
             .post(bodyJson.toString().toRequestBody("application/json".toMediaType()))
             .build()
 
@@ -263,7 +269,7 @@ class ElevenLabsClient(
                         FileOutputStream(outputFile, false).use { out ->
                             body.byteStream().copyTo(out)
                         }
-                        return outputFile
+                        return@withContext outputFile
                     }
 
                     val errString = response.body.string()
@@ -290,6 +296,7 @@ class ElevenLabsClient(
                 }
             }
         }
+        throw ElevenLabsException("Dialogue synthesis failed unexpectedly.")
     }
 
     suspend fun synthesize(
@@ -300,7 +307,7 @@ class ElevenLabsClient(
         modelId: String = DEFAULT_MODEL_ID,
         multipleVoices: Boolean = true,
         outputFile: File,
-    ): File {
+    ): File = withContext(Dispatchers.IO) {
         if (turns.isEmpty()) {
             throw ElevenLabsException("No text to synthesize.")
         }
@@ -308,7 +315,7 @@ class ElevenLabsClient(
         // If user specifically requested eleven_v3 AND multipleVoices is on, try text-to-dialogue first
         if (modelId == "eleven_v3" && multipleVoices) {
             try {
-                return textToDialogue(
+                return@withContext textToDialogue(
                     turns = turns,
                     narratorVoiceId = narratorVoiceId,
                     secondaryVoiceId = secondaryVoiceId,
@@ -335,7 +342,7 @@ class ElevenLabsClient(
         // Combine all turns into a single request
         if (!multipleVoices) {
             val fullText = turns.joinToString("\n\n") { it.text }
-            return textToSpeech(
+            return@withContext textToSpeech(
                 text = fullText,
                 voiceId = narratorVoiceId,
                 modelId = effectiveModel,
@@ -353,7 +360,7 @@ class ElevenLabsClient(
                 narratorVoiceId.ifBlank { DEFAULT_NARRATOR_VOICE_ID }
             }
             val fullText = turns.joinToString("\n\n") { it.text }
-            return textToSpeech(
+            return@withContext textToSpeech(
                 text = fullText,
                 voiceId = singleVoiceId,
                 modelId = effectiveModel,
@@ -393,28 +400,29 @@ class ElevenLabsClient(
             )
         }
 
-        return outputFile
+        return@withContext outputFile
     }
 
-    suspend fun fetchVoices(): List<ElevenLabsVoice> {
-        val apiKey = apiKeyProvider().trim()
-        if (apiKey.isBlank()) return emptyList()
+    suspend fun fetchVoices(): List<ElevenLabsVoice> = withContext(Dispatchers.IO) {
+        val apiKey = apiKeyProvider().trim().trim('"', '\'')
+        if (apiKey.isBlank()) return@withContext emptyList()
 
         val request = Request.Builder()
-            .url("$baseUrl/v2/voices?page_size=100")
+            .url("$baseUrl/v1/voices")
             .header("xi-api-key", apiKey)
+            .header("Accept", "application/json")
             .get()
             .build()
 
-        return try {
+        try {
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
                     logcat(LogPriority.WARN) { "Failed to fetch ElevenLabs voices (code ${response.code})" }
-                    return emptyList()
+                    return@withContext emptyList()
                 }
                 val bodyStr = response.body.string()
                 val json = Json.parseToJsonElement(bodyStr).jsonObject
-                val voicesArr = json["voices"]?.jsonArray ?: return emptyList()
+                val voicesArr = json["voices"]?.jsonArray ?: return@withContext emptyList()
                 val voices = mutableListOf<ElevenLabsVoice>()
 
                 for (item in voicesArr) {
