@@ -58,7 +58,9 @@ internal class HttpPageLoader(
         }
             .also { readerPages ->
                 val firstUrl = pages.firstOrNull()?.imageUrl ?: pages.firstOrNull()?.url.orEmpty()
-                val isVideo = eu.kanade.tachiyomi.ui.player.detector.DefaultVideoChapterDetector.hasVideoExtension(firstUrl)
+                val isVideo = eu.kanade.tachiyomi.ui.player.detector.DefaultVideoChapterDetector.hasVideoExtension(
+                    firstUrl,
+                )
                 if (!isVideo) {
                     readerPages.loadByRollingChunked(0, 1, 1)
                 }

@@ -35,7 +35,9 @@ class GeminiVisionTranslator(
     ): Pair<List<TextBlock>, List<String>> = withContext(Dispatchers.IO) {
         val apiKey = apiKeyProvider().trim()
         if (apiKey.isBlank()) {
-            throw IllegalArgumentException("Gemini API key is required. Please set your API key in Reader Settings → Translation.")
+            throw IllegalArgumentException(
+                "Gemini API key is required. Please set your API key in Reader Settings → Translation.",
+            )
         }
 
         val configuredModel = modelProvider().trim()
@@ -165,7 +167,9 @@ class GeminiVisionTranslator(
             val response = try {
                 okHttpClient.newCall(request).execute()
             } catch (e: Exception) {
-                logcat(LogPriority.ERROR) { "Network error calling Gemini API with model $tryModel ($version): ${e.message}" }
+                logcat(LogPriority.ERROR) {
+                    "Network error calling Gemini API with model $tryModel ($version): ${e.message}"
+                }
                 throw IllegalStateException("Network connection failed. Please check your internet connection.", e)
             }
 
@@ -190,7 +194,9 @@ class GeminiVisionTranslator(
             val jsonMsg = try {
                 val element = Json.parseToJsonElement(lastResponseBody)
                 element.jsonObject["error"]?.jsonObject?.get("message")?.jsonPrimitive?.content
-            } catch (_: Exception) { null }
+            } catch (_: Exception) {
+                null
+            }
             jsonMsg ?: lastResponseBody.take(300)
         } else {
             "No error details returned by Google"
@@ -198,7 +204,9 @@ class GeminiVisionTranslator(
 
         val errorMsg = when (lastResponseCode) {
             400, 403 -> "Invalid Gemini API key or unauthorized request: $serverErrorSnippet"
-            404 -> "Gemini API error (HTTP 404 Not Found): $serverErrorSnippet (Tried: ${candidatesToTry.map { "${it.second}@${it.first}" }.joinToString()})"
+            404 -> "Gemini API error (HTTP 404 Not Found): $serverErrorSnippet (Tried: ${candidatesToTry.map {
+                "${it.second}@${it.first}"
+            }.joinToString()})"
             429 -> "Gemini API rate limit exceeded: $serverErrorSnippet"
             else -> "Gemini API error (HTTP $lastResponseCode): $serverErrorSnippet"
         }

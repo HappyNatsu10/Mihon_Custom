@@ -23,7 +23,8 @@ enum class SourceLanguage(val code: String, val displayName: String, val mlKitLa
     JAPANESE("ja", "Japanese", "ja"),
     KOREAN("ko", "Korean", "ko"),
     CHINESE("zh", "Chinese", "zh"),
-    ENGLISH("en", "English", "en");
+    ENGLISH("en", "English", "en"),
+    ;
 
     companion object {
         fun fromCode(code: String): SourceLanguage {
@@ -35,7 +36,8 @@ enum class SourceLanguage(val code: String, val displayName: String, val mlKitLa
 enum class TranslationProviderType(val id: String, val displayName: String) {
     ON_DEVICE_MLKIT("mlkit", "On-device (ML Kit)"),
     CLOUD_VISION("cloudvision", "Cloud Vision (Google Cloud)"),
-    LLM_GEMINI("gemini", "LLM Vision (Gemini)");
+    LLM_GEMINI("gemini", "LLM Vision (Gemini)"),
+    ;
 
     companion object {
         fun fromId(id: String): TranslationProviderType {

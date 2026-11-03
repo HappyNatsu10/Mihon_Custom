@@ -80,7 +80,10 @@ class MlKitTranslator : TextTranslator {
                 Tasks.await(translator.downloadModelIfNeeded(conditions))
             } catch (e: Exception) {
                 logcat(LogPriority.ERROR) { "Failed to download or load ML Kit translation model: ${e.message}" }
-                throw IllegalStateException("Translation model ($sourceTag->$targetTag) not downloaded. Please connect to internet to download language pack.", e)
+                throw IllegalStateException(
+                    "Translation model ($sourceTag->$targetTag) not downloaded. Please connect to internet to download language pack.",
+                    e,
+                )
             }
 
             blocks.map { blockText ->

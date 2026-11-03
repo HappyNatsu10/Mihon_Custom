@@ -163,7 +163,9 @@ class PlayerViewModel(
                             val effHeaders = DefaultVideoChapterDetector.buildEffectiveHeaders(httpSource, url)
                             val headersMap = effHeaders.names().associateWith { effHeaders[it].orEmpty() }
                             VideoTrack(index, url, headersMap)
-                        } else null
+                        } else {
+                            null
+                        }
                     }
                     if (playlist.isNotEmpty()) {
                         applyVideoPlaylist(chapter, playlist, chapterUrl)

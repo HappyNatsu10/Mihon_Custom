@@ -270,7 +270,10 @@ sealed interface UpdatesUiModel {
         val hasUnread: Boolean get() = items.any { !it.update.read }
         val allSelected: Boolean get() = items.all { it.selected }
         val partiallySelected: Boolean get() = !allSelected && items.any { it.selected }
-        val downloadedCount: Int get() = items.count { it.downloadStateProvider() == eu.kanade.tachiyomi.data.download.model.Download.State.DOWNLOADED }
+        val downloadedCount: Int get() = items.count {
+            it.downloadStateProvider() ==
+                eu.kanade.tachiyomi.data.download.model.Download.State.DOWNLOADED
+        }
         val representativeItem: UpdatesItem get() = items.first()
     }
 }

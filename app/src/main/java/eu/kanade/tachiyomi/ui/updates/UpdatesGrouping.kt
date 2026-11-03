@@ -1,8 +1,8 @@
 package eu.kanade.tachiyomi.ui.updates
 
 import eu.kanade.presentation.updates.UpdatesUiModel
-import kotlinx.datetime.LocalDate
 import eu.kanade.tachiyomi.util.lang.toLocalDate
+import kotlinx.datetime.LocalDate
 import kotlin.time.Instant
 
 // CUSTOM: Feature B - Pure grouping logic for Updates tab
@@ -12,7 +12,9 @@ object UpdatesGrouping {
     private val numberRegex = Regex("""\b([0-9]+(?:\.[0-9]+)?)\b""")
 
     private val chapterNumberCache = java.util.concurrent.ConcurrentHashMap<String, Double>()
-    private val nullNumberCache = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
+    private val nullNumberCache = java.util.Collections.newSetFromMap(
+        java.util.concurrent.ConcurrentHashMap<String, Boolean>(),
+    )
     private val dateCache = java.util.concurrent.ConcurrentHashMap<Instant, LocalDate>()
 
     fun parseChapterNumber(name: String): Double? {

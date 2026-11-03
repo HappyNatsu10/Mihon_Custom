@@ -27,11 +27,15 @@ class MlKitOcr : PageOcr {
             SourceLanguage.JAPANESE -> TextRecognition.getClient(JapaneseTextRecognizerOptions.Builder().build())
             SourceLanguage.CHINESE -> TextRecognition.getClient(ChineseTextRecognizerOptions.Builder().build())
             SourceLanguage.KOREAN -> TextRecognition.getClient(KoreanTextRecognizerOptions.Builder().build())
-            SourceLanguage.ENGLISH, SourceLanguage.AUTO -> TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+            SourceLanguage.ENGLISH, SourceLanguage.AUTO -> TextRecognition.getClient(
+                TextRecognizerOptions.DEFAULT_OPTIONS,
+            )
         }
     }
 
-    override suspend fun recognize(page: Bitmap, sourceLang: SourceLanguage): List<TextBlock> = withContext(Dispatchers.Default) {
+    override suspend fun recognize(page: Bitmap, sourceLang: SourceLanguage): List<TextBlock> = withContext(
+        Dispatchers.Default,
+    ) {
         if (sourceLang != SourceLanguage.AUTO) {
             val recognizer = createRecognizer(sourceLang)
             return@withContext try {
@@ -124,7 +128,12 @@ class MlKitOcr : PageOcr {
                 box.right.toFloat(),
                 box.bottom.toFloat() + offsetY,
             )
-            val cornerPoints = block.cornerPoints?.map { android.graphics.PointF(it.x.toFloat(), it.y.toFloat() + offsetY) }
+            val cornerPoints = block.cornerPoints?.map {
+                android.graphics.PointF(
+                    it.x.toFloat(),
+                    it.y.toFloat() + offsetY,
+                )
+            }
 
             val cleanText = formatMangaText(block, rectF)
             if (cleanText.isBlank()) return@mapNotNull null

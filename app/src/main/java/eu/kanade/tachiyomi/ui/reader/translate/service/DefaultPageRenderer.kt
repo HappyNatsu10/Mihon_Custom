@@ -34,7 +34,12 @@ class DefaultPageRenderer(
             page.copy(Bitmap.Config.ARGB_8888, true)
         } catch (e: OutOfMemoryError) {
             logcat(LogPriority.WARN) { "OOM allocating full ARGB_8888 copy, attempting scaled rendering: ${e.message}" }
-            val scaled = Bitmap.createScaledBitmap(page, (page.width * 0.75f).toInt(), (page.height * 0.75f).toInt(), true)
+            val scaled = Bitmap.createScaledBitmap(
+                page,
+                (page.width * 0.75f).toInt(),
+                (page.height * 0.75f).toInt(),
+                true,
+            )
             scaled.copy(Bitmap.Config.ARGB_8888, true)
         }
 

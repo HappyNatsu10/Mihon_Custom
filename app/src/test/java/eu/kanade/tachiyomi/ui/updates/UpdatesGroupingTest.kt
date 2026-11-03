@@ -2,12 +2,12 @@ package eu.kanade.tachiyomi.ui.updates
 
 import eu.kanade.presentation.updates.UpdatesUiModel
 import eu.kanade.tachiyomi.data.download.model.Download
+import eu.kanade.tachiyomi.util.lang.toLocalDate
 import kotlinx.datetime.LocalDate
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
-import eu.kanade.tachiyomi.util.lang.toLocalDate
 import tachiyomi.domain.manga.model.MangaCover
 import tachiyomi.domain.updates.model.UpdatesWithRelations
 import kotlin.time.Instant

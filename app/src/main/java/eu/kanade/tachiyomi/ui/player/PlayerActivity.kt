@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ActivityInfo
+import android.content.res.Configuration
 import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
@@ -12,7 +13,6 @@ import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import android.content.res.Configuration
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.animation.AnimatedVisibility
@@ -123,6 +123,7 @@ class PlayerActivity : AppCompatActivity() {
     private val graph: AppGraph by lazy { metroGraph() }
 
     @Inject lateinit var readerPreferences: ReaderPreferences
+
     @Inject lateinit var preferences: BasePreferences
 
     val viewModel by viewModels<PlayerViewModel> { graph.viewModelFactory }
@@ -671,8 +672,12 @@ fun PlayerScreen(
                         },
                     ) {
                         Icon(
-                            painter = painterResource(if (isZoomMode) R.drawable.ic_fullscreen_exit else R.drawable.ic_fullscreen),
-                            contentDescription = stringResource(if (isZoomMode) MR.strings.video_fit_screen else MR.strings.video_fullscreen),
+                            painter = painterResource(
+                                if (isZoomMode) R.drawable.ic_fullscreen_exit else R.drawable.ic_fullscreen,
+                            ),
+                            contentDescription = stringResource(
+                                if (isZoomMode) MR.strings.video_fit_screen else MR.strings.video_fullscreen,
+                            ),
                             tint = Color.White,
                         )
                     }
@@ -788,7 +793,9 @@ fun PlayerScreen(
                             modifier = Modifier.fillMaxSize(),
                         ) {
                             Icon(
-                                painter = painterResource(if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play_arrow),
+                                painter = painterResource(
+                                    if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play_arrow,
+                                ),
                                 contentDescription = if (isPlaying) "Pause" else "Play",
                                 tint = Color.White,
                                 modifier = Modifier.size(44.dp),
@@ -799,7 +806,9 @@ fun PlayerScreen(
                     IconButton(
                         onClick = {
                             player?.let { p ->
-                                val target = (p.currentPosition + skipSeconds * 1000L).coerceAtMost(p.duration.coerceAtLeast(0L))
+                                val target = (p.currentPosition + skipSeconds * 1000L).coerceAtMost(
+                                    p.duration.coerceAtLeast(0L),
+                                )
                                 p.seekTo(target)
                                 currentPositionMs = target
                             }
@@ -916,12 +925,18 @@ fun PlayerScreen(
                         IconButton(
                             onClick = {
                                 isZoomMode = !isZoomMode
-                                context.toast(if (isZoomMode) MR.strings.video_fill_screen else MR.strings.video_fit_screen)
+                                context.toast(
+                                    if (isZoomMode) MR.strings.video_fill_screen else MR.strings.video_fit_screen,
+                                )
                             },
                         ) {
                             Icon(
-                                painter = painterResource(if (isZoomMode) R.drawable.ic_fullscreen_exit else R.drawable.ic_fullscreen),
-                                contentDescription = stringResource(if (isZoomMode) MR.strings.video_fit_screen else MR.strings.video_fullscreen),
+                                painter = painterResource(
+                                    if (isZoomMode) R.drawable.ic_fullscreen_exit else R.drawable.ic_fullscreen,
+                                ),
+                                contentDescription = stringResource(
+                                    if (isZoomMode) MR.strings.video_fit_screen else MR.strings.video_fullscreen,
+                                ),
                                 tint = Color.White,
                             )
                         }

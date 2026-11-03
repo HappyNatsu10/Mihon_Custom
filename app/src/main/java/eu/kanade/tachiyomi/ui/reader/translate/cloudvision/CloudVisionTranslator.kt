@@ -29,7 +29,9 @@ class CloudVisionTranslator(
     suspend fun recognize(page: Bitmap): List<TextBlock> = withContext(Dispatchers.IO) {
         val apiKey = apiKeyProvider().trim()
         if (apiKey.isBlank()) {
-            throw IllegalArgumentException("Google Cloud Vision API key is required. Please set your API key in Reader Settings → Translation.")
+            throw IllegalArgumentException(
+                "Google Cloud Vision API key is required. Please set your API key in Reader Settings → Translation.",
+            )
         }
 
         // Downscale image if too large (max 2048px on longest side)

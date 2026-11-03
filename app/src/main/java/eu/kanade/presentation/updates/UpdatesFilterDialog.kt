@@ -25,12 +25,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastForEachIndexed
 import eu.kanade.presentation.category.visualName
-import tachiyomi.domain.updates.model.UpdatesDateFilter
 import eu.kanade.presentation.components.TabbedDialog
 import eu.kanade.presentation.components.TabbedDialogPaddings
 import eu.kanade.tachiyomi.ui.updates.UpdatesSettingsViewModel
 import tachiyomi.core.common.preference.TriState
 import tachiyomi.core.common.preference.getAndSet
+import tachiyomi.domain.updates.model.UpdatesDateFilter
 import tachiyomi.domain.updates.service.UpdatesPreferences
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.SettingsItemsPaddings

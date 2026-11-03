@@ -263,7 +263,9 @@ private fun UpdatesGroupUiItem(
             downloadStateProvider = {
                 when {
                     group.downloadedCount == group.count -> Download.State.DOWNLOADED
-                    group.items.any { it.downloadStateProvider() == Download.State.DOWNLOADING } -> Download.State.DOWNLOADING
+                    group.items.any {
+                        it.downloadStateProvider() == Download.State.DOWNLOADING
+                    } -> Download.State.DOWNLOADING
                     group.items.any { it.downloadStateProvider() == Download.State.QUEUE } -> Download.State.QUEUE
                     else -> Download.State.NOT_DOWNLOADED
                 }

@@ -252,7 +252,13 @@ class ReaderActivity : BaseActivity() {
                         onSetAsCoverResult(event.result)
                     }
                     is ReaderViewModel.Event.OpenVideoPlayer -> {
-                        startActivity(eu.kanade.tachiyomi.ui.player.PlayerActivity.newIntent(this@ReaderActivity, event.mangaId, event.chapterId))
+                        startActivity(
+                            eu.kanade.tachiyomi.ui.player.PlayerActivity.newIntent(
+                                this@ReaderActivity,
+                                event.mangaId,
+                                event.chapterId,
+                            ),
+                        )
                         finish()
                     }
                 }
@@ -1065,7 +1071,11 @@ class ReaderActivity : BaseActivity() {
                 page.status = eu.kanade.tachiyomi.source.model.Page.State.Ready
                 menuToggleToast?.cancel()
                 menuToggleToast = toast(
-                    if (page.isShowingTranslation) MR.strings.action_translate_translated else MR.strings.action_translate_original,
+                    if (page.isShowingTranslation) {
+                        MR.strings.action_translate_translated
+                    } else {
+                        MR.strings.action_translate_original
+                    },
                 )
             }
             return

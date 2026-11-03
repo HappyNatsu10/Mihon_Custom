@@ -6,7 +6,8 @@ enum class UpdatesDateFilter(val days: Int?) {
     LAST_3_DAYS(3),
     LAST_7_DAYS(7),
     LAST_30_DAYS(30),
-    LAST_3_MONTHS(90);
+    LAST_3_MONTHS(90),
+    ;
 
     companion object {
         fun fromDays(days: Int?): UpdatesDateFilter {

@@ -74,12 +74,17 @@ class DefaultVideoChapterDetector(
         val firstUrl = resolvePageUrl(source, firstPage)
         val firstHeaders = if (firstUrl != null) buildEffectiveHeaders(source, firstUrl) else source.headers
 
-        val isVideoChapter = hasAnyVideoExt || (firstUrl != null && (
-            hasVideoExtension(firstUrl) || probeIsVideo(firstUrl, firstHeaders, networkHelper.client)
-        )) || (pages.size <= 3 && pages.any { page ->
-            val u = resolvePageUrl(source, page)
-            u != null && (hasVideoExtension(u) || probeIsVideo(u, buildEffectiveHeaders(source, u), networkHelper.client))
-        })
+        val isVideoChapter = hasAnyVideoExt || (
+            firstUrl != null && (
+                hasVideoExtension(firstUrl) || probeIsVideo(firstUrl, firstHeaders, networkHelper.client)
+                )
+            ) || (
+            pages.size <= 3 && pages.any { page ->
+                val u = resolvePageUrl(source, page)
+                u != null &&
+                    (hasVideoExtension(u) || probeIsVideo(u, buildEffectiveHeaders(source, u), networkHelper.client))
+            }
+            )
 
         if (!isVideoChapter) {
             val result = VideoDetectionResult.NotVideo
@@ -138,7 +143,14 @@ class DefaultVideoChapterDetector(
         )
 
         val IMAGE_EXTENSIONS = setOf(
-            "jpg", "jpeg", "png", "webp", "avif", "gif", "bmp", "heic",
+            "jpg",
+            "jpeg",
+            "png",
+            "webp",
+            "avif",
+            "gif",
+            "bmp",
+            "heic",
         )
 
         val PROBE_CONTENT_TYPES = setOf(
@@ -216,7 +228,9 @@ class DefaultVideoChapterDetector(
                     .build()
                 probeClient.newCall(headReq).execute().use { response ->
                     if (response.isSuccessful) {
-                        val contentType = response.header("Content-Type")?.lowercase()?.substringBefore(';')?.trim().orEmpty()
+                        val contentType = response.header(
+                            "Content-Type",
+                        )?.lowercase()?.substringBefore(';')?.trim().orEmpty()
                         if (contentType.startsWith("video/") || contentType in PROBE_CONTENT_TYPES) {
                             return true
                         }
@@ -243,7 +257,9 @@ class DefaultVideoChapterDetector(
                     .build()
                 probeClient.newCall(rangeReq).execute().use { response ->
                     if (response.isSuccessful || response.code == 206) {
-                        val contentType = response.header("Content-Type")?.lowercase()?.substringBefore(';')?.trim().orEmpty()
+                        val contentType = response.header(
+                            "Content-Type",
+                        )?.lowercase()?.substringBefore(';')?.trim().orEmpty()
                         if (contentType.startsWith("video/") || contentType in PROBE_CONTENT_TYPES) {
                             return true
                         }

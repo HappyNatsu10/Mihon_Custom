@@ -60,8 +60,8 @@ import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.model.applyFilter
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.updates.interactor.GetUpdates
-import tachiyomi.domain.updates.model.UpdatesWithRelations
 import tachiyomi.domain.updates.model.UpdatesDateFilter
+import tachiyomi.domain.updates.model.UpdatesWithRelations
 import tachiyomi.domain.updates.service.UpdatesPreferences
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
@@ -268,7 +268,9 @@ class UpdatesViewModel(
         val dateCutoff = if (filterDateRange != UpdatesDateFilter.ALL) {
             val days = filterDateRange.days ?: 90
             Clock.System.now().minus(days, DateTimeUnit.DAY, TimeZone.currentSystemDefault())
-        } else null
+        } else {
+            null
+        }
 
         val filterFnDownloaded: (UpdatesItem) -> Boolean = {
             applyFilter(filterDownloaded) {

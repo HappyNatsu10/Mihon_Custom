@@ -28,7 +28,13 @@ class TranslationCacheTest {
     fun `computeKey produces distinct keys when target language or provider changes`() {
         val keyEn = TranslationCache.computeKey("manga:1/ch:2/p:0", "ja", "en", "mlkit")
         val keyEs = TranslationCache.computeKey("manga:1/ch:2/p:0", "ja", "es", "mlkit")
-        val keyGemini = TranslationCache.computeKey("manga:1/ch:2/p:0", "ja", "en", "gemini", model = "gemini-1.5-flash")
+        val keyGemini = TranslationCache.computeKey(
+            "manga:1/ch:2/p:0",
+            "ja",
+            "en",
+            "gemini",
+            model = "gemini-1.5-flash",
+        )
 
         assertNotEquals(keyEn, keyEs)
         assertNotEquals(keyEn, keyGemini)

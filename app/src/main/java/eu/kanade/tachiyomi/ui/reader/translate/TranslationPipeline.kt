@@ -10,6 +10,7 @@ import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.translate.cache.TranslationCache
+import eu.kanade.tachiyomi.ui.reader.translate.cloudvision.CloudVisionTranslator
 import eu.kanade.tachiyomi.ui.reader.translate.gemini.GeminiVisionTranslator
 import eu.kanade.tachiyomi.ui.reader.translate.mlkit.MlKitOcr
 import eu.kanade.tachiyomi.ui.reader.translate.mlkit.MlKitTranslator
@@ -39,8 +40,8 @@ class TranslationPipeline(
 
     private val mlKitOcr: PageOcr by lazy { MlKitOcr() }
     private val mlKitTranslator: TextTranslator by lazy { MlKitTranslator() }
-    private val cloudVisionTranslator: eu.kanade.tachiyomi.ui.reader.translate.cloudvision.CloudVisionTranslator by lazy {
-        eu.kanade.tachiyomi.ui.reader.translate.cloudvision.CloudVisionTranslator(
+    private val cloudVisionTranslator: CloudVisionTranslator by lazy {
+        CloudVisionTranslator(
             okHttpClient = networkHelper.client,
             apiKeyProvider = { readerPreferences.readerTranslationCloudVisionApiKey.get() },
         )
