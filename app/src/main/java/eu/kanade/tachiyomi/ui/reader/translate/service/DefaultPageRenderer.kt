@@ -78,17 +78,14 @@ class DefaultPageRenderer(
                 boxWidth = right - left
             }
 
-            // 1. Sample interior bubble color to determine light vs dark bubble
-            val isLightBackground = isLightBackground(page, origBox)
+            // 1. Sample interior bubble color to determine adaptive background and text contrast
+            val (r, g, b) = sampleBackgroundColor(page, origBox)
+            val luminance = 0.299 * r + 0.587 * g + 0.114 * b
+            val isLightBackground = luminance >= 128.0
             val alpha = (style.backgroundOpacity.coerceIn(0.2f, 1.0f) * 255).toInt()
 
-            if (isLightBackground) {
-                bgPaint.color = Color.argb(alpha, 255, 255, 255)
-                textPaint.color = Color.BLACK
-            } else {
-                bgPaint.color = Color.argb(alpha, 24, 24, 24)
-                textPaint.color = Color.WHITE
-            }
+            bgPaint.color = Color.argb(alpha, r, g, b)
+            textPaint.color = if (isLightBackground) Color.BLACK else Color.WHITE
 
             // 2. Draw speech bubble inpainting cover with outward padding to hide original glyphs
             val padOutward = 3f * density
@@ -118,8 +115,10 @@ class DefaultPageRenderer(
         return output
     }
 
-    private fun isLightBackground(bitmap: Bitmap, box: android.graphics.RectF): Boolean {
-        var totalLuminance = 0.0
+    private fun sampleBackgroundColor(bitmap: Bitmap, box: android.graphics.RectF): Triple<Int, Int, Int> {
+        var rSum = 0L
+        var gSum = 0L
+        var bSum = 0L
         var count = 0
 
         val cx = box.centerX()
@@ -128,11 +127,14 @@ class DefaultPageRenderer(
         val h = box.height()
 
         val samplePoints = listOf(
-            Pair(cx, cy),
-            Pair(cx - w * 0.2f, cy - h * 0.2f),
-            Pair(cx + w * 0.2f, cy + h * 0.2f),
-            Pair(cx - w * 0.2f, cy + h * 0.2f),
-            Pair(cx + w * 0.2f, cy - h * 0.2f),
+            Pair(cx - w * 0.35f, cy - h * 0.35f),
+            Pair(cx + w * 0.35f, cy + h * 0.35f),
+            Pair(cx - w * 0.35f, cy + h * 0.35f),
+            Pair(cx + w * 0.35f, cy - h * 0.35f),
+            Pair(cx, cy - h * 0.40f),
+            Pair(cx, cy + h * 0.40f),
+            Pair(cx - w * 0.40f, cy),
+            Pair(cx + w * 0.40f, cy),
         )
 
         for ((x, y) in samplePoints) {
@@ -140,16 +142,17 @@ class DefaultPageRenderer(
             val py = y.toInt().coerceIn(0, bitmap.height - 1)
             try {
                 val color = bitmap.getPixel(px, py)
-                val r = Color.red(color)
-                val g = Color.green(color)
-                val b = Color.blue(color)
-                totalLuminance += (0.299 * r + 0.587 * g + 0.114 * b)
+                rSum += Color.red(color)
+                gSum += Color.green(color)
+                bSum += Color.blue(color)
                 count++
             } catch (_: Exception) {}
         }
 
-        val avgLuminance = if (count > 0) totalLuminance / count else 255.0
-        return avgLuminance >= 130.0
+        val r = if (count > 0) (rSum / count).toInt() else 255
+        val g = if (count > 0) (gSum / count).toInt() else 255
+        val b = if (count > 0) (bSum / count).toInt() else 255
+        return Triple(r, g, b)
     }
 
     private fun fitText(

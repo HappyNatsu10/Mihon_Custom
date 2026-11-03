@@ -2,7 +2,9 @@ package eu.kanade.tachiyomi.ui.reader.translate.mlkit
 
 import com.google.android.gms.tasks.Tasks
 import com.google.mlkit.common.model.DownloadConditions
+import com.google.mlkit.common.model.RemoteModelManager
 import com.google.mlkit.nl.translate.TranslateLanguage
+import com.google.mlkit.nl.translate.TranslateRemoteModel
 import com.google.mlkit.nl.translate.Translation
 import com.google.mlkit.nl.translate.TranslatorOptions
 import eu.kanade.tachiyomi.ui.reader.translate.model.SourceLanguage
@@ -133,5 +135,41 @@ class MlKitTranslator : TextTranslator {
             res = res.replaceFirstChar { it.uppercase() }
         }
         return res
+    }
+
+    companion object {
+        suspend fun isModelDownloaded(langCode: String): Boolean = withContext(Dispatchers.IO) {
+            try {
+                val tag = TranslateLanguage.fromLanguageTag(langCode) ?: return@withContext false
+                val model = TranslateRemoteModel.Builder(tag).build()
+                Tasks.await(RemoteModelManager.getInstance().isModelDownloaded(model))
+            } catch (_: Exception) {
+                false
+            }
+        }
+
+        suspend fun downloadModel(langCode: String): Boolean = withContext(Dispatchers.IO) {
+            try {
+                val tag = TranslateLanguage.fromLanguageTag(langCode) ?: return@withContext false
+                val model = TranslateRemoteModel.Builder(tag).build()
+                val conditions = DownloadConditions.Builder().build()
+                Tasks.await(RemoteModelManager.getInstance().download(model, conditions))
+                true
+            } catch (e: Exception) {
+                logcat(LogPriority.ERROR) { "Failed to download model for $langCode: ${e.message}" }
+                false
+            }
+        }
+
+        suspend fun deleteModel(langCode: String): Boolean = withContext(Dispatchers.IO) {
+            try {
+                val tag = TranslateLanguage.fromLanguageTag(langCode) ?: return@withContext false
+                val model = TranslateRemoteModel.Builder(tag).build()
+                Tasks.await(RemoteModelManager.getInstance().deleteDownloadedModel(model))
+                true
+            } catch (_: Exception) {
+                false
+            }
+        }
     }
 }

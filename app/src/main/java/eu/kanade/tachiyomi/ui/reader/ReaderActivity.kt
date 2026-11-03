@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
@@ -86,6 +87,7 @@ import eu.kanade.tachiyomi.util.system.toShareIntent
 import eu.kanade.tachiyomi.util.system.toast
 import eu.kanade.tachiyomi.util.view.setComposeContent
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
@@ -99,6 +101,9 @@ import kotlinx.coroutines.withContext
 import logcat.LogPriority
 import mihon.app.di.AppGraph
 import mihon.core.metro.metroGraph
+import mihon.feature.readaloud.model.Turn
+import mihon.feature.readaloud.presentation.ReadAloudMiniPlayer
+import mihon.feature.readaloud.presentation.ReadAloudTextPreviewDialog
 import tachiyomi.core.common.Constants
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.util.system.logcat
@@ -150,6 +155,12 @@ class ReaderActivity : BaseActivity() {
     private var isTranslatingPage by mutableStateOf(false)
     private var showCloudTranslationPrivacyDialog by mutableStateOf(false)
     private val ttsManager by lazy { eu.kanade.tachiyomi.ui.reader.tts.ReaderTtsManager(this) }
+
+    // CUSTOM: Read Aloud Pipeline
+    private val readAloudPipeline by lazy { graph.readAloudPipeline }
+    private var showReadAloudPreview by mutableStateOf(false)
+    private var previewTurns by mutableStateOf<List<Turn>>(emptyList())
+    private var previewTotalChars by mutableStateOf(0)
 
     /**
      * Called when the activity is created. Initializes the presenter and configuration.
@@ -292,6 +303,44 @@ class ReaderActivity : BaseActivity() {
             ContentOverlay(state = state)
 
             AppBars(state = state)
+
+            val readAloudSessionState by readAloudPipeline.player.sessionState.collectAsState()
+            if (readAloudSessionState.isReading || readAloudSessionState.isPaused) {
+                ReadAloudMiniPlayer(
+                    state = readAloudSessionState,
+                    onPlayPause = {
+                        if (readAloudSessionState.isPaused) {
+                            readAloudPipeline.player.resume()
+                        } else {
+                            readAloudPipeline.player.pause()
+                        }
+                    },
+                    onStop = {
+                        readAloudPipeline.stop()
+                    },
+                    onNextPage = {
+                        moveToNextPage()
+                    },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = if (state.menuVisible) 84.dp else 24.dp)
+                        .padding(horizontal = 16.dp),
+                )
+            }
+        }
+
+        if (showReadAloudPreview) {
+            ReadAloudTextPreviewDialog(
+                turns = previewTurns,
+                totalCharacters = previewTotalChars,
+                onDismissRequest = { showReadAloudPreview = false },
+                onStartPlayback = {
+                    showReadAloudPreview = false
+                    getCurrentReaderPage()?.let { p ->
+                        startReadAloudForPage(p)
+                    }
+                },
+            )
         }
 
         val onDismissRequest = viewModel::closeDialog
@@ -385,6 +434,7 @@ class ReaderActivity : BaseActivity() {
     override fun onDestroy() {
         super.onDestroy()
         ttsManager.release()
+        readAloudPipeline.stop()
         viewModel.state.value.viewer?.destroy()
         config = null
         menuToggleToast?.cancel()
@@ -393,6 +443,9 @@ class ReaderActivity : BaseActivity() {
 
     override fun onPause() {
         ttsManager.stop()
+        if (!readAloudPipeline.preferences.backgroundAudio.get()) {
+            readAloudPipeline.stop()
+        }
         viewModel.saveHistory()
         super.onPause()
     }
@@ -512,6 +565,8 @@ class ReaderActivity : BaseActivity() {
         val currentReaderPage = getCurrentReaderPage()
         val isTranslated = currentReaderPage?.isShowingTranslation == true
         val isTtsSpeaking by ttsManager.isSpeaking.collectAsState()
+        val readAloudSessionState by readAloudPipeline.player.sessionState.collectAsState()
+        val isSpeaking = isTtsSpeaking || readAloudSessionState.isReading
 
         ReaderAppBars(
             visible = state.menuVisible,
@@ -594,8 +649,9 @@ class ReaderActivity : BaseActivity() {
 
             // CUSTOM: TTS button
             ttsEnabled = true,
-            isSpeaking = isTtsSpeaking,
+            isSpeaking = isSpeaking,
             onClickTts = ::toggleTtsCurrentPage,
+            onLongClickTts = ::showReadAloudPreviewDialog,
         )
     }
 
@@ -1134,7 +1190,85 @@ class ReaderActivity : BaseActivity() {
         }
     }
 
+    private fun moveToNextPage() {
+        val current = getCurrentReaderPage() ?: return
+        val currentChapter = viewModel.state.value.currentChapter ?: return
+        val pages = currentChapter.pages ?: return
+        val nextIndex = current.index + 1
+        if (nextIndex < pages.size) {
+            moveToPageIndex(nextIndex)
+        } else {
+            loadNextChapter()
+        }
+    }
+
+    private fun handleReadAloudSessionComplete() {
+        if (!readAloudPipeline.preferences.autoAdvance.get()) {
+            return
+        }
+        lifecycleScope.launch(Dispatchers.Main) {
+            moveToNextPage()
+            delay(800)
+            getCurrentReaderPage()?.let { nextPage ->
+                startReadAloudForPage(nextPage)
+            }
+        }
+    }
+
+    private fun startReadAloudForPage(page: ReaderPage) {
+        lifecycleScope.launch {
+            try {
+                toast(MR.strings.action_tts_speaking)
+                readAloudPipeline.readPageAloud(page) {
+                    handleReadAloudSessionComplete()
+                }
+            } catch (e: Throwable) {
+                logcat(LogPriority.ERROR) { "ReadAloud error: ${e.message}" }
+                toast(e.message ?: "ReadAloud error")
+            }
+        }
+    }
+
+    private fun showReadAloudPreviewDialog() {
+        if (!readAloudPipeline.preferences.enableReadAloud.get()) {
+            toast("Enable Read Aloud in Settings -> Reader -> Read Aloud")
+            return
+        }
+        val page = getCurrentReaderPage()
+        if (page == null) {
+            toast(MR.strings.page_list_empty_error)
+            return
+        }
+        lifecycleScope.launch {
+            try {
+                toast("Analyzing page dialogue...")
+                val (turns, chars) = readAloudPipeline.previewPageText(page)
+                previewTurns = turns
+                previewTotalChars = chars
+                showReadAloudPreview = true
+            } catch (e: Throwable) {
+                toast(e.message ?: "Failed to preview text")
+            }
+        }
+    }
+
     private fun toggleTtsCurrentPage() {
+        if (readAloudPipeline.preferences.enableReadAloud.get()) {
+            val session = readAloudPipeline.player.sessionState.value
+            if (session.isReading || session.isPaused) {
+                readAloudPipeline.stop()
+                toast(MR.strings.action_tts_stop)
+                return
+            }
+            val page = getCurrentReaderPage()
+            if (page == null) {
+                toast(MR.strings.page_list_empty_error)
+                return
+            }
+            startReadAloudForPage(page)
+            return
+        }
+
         if (ttsManager.isSpeaking.value) {
             ttsManager.stop()
             toast(MR.strings.action_tts_stop)

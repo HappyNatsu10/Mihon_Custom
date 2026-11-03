@@ -6,6 +6,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import cafe.adriel.voyager.navigator.LocalNavigator
+import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.presentation.more.settings.Preference
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderOrientation
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
@@ -28,6 +30,7 @@ object SettingsReaderScreen : SearchableSettings {
     override fun getPreferences(): List<Preference> {
         val context = LocalContext.current
         val readerPref = remember { context.appGraph.readerPreferences }
+        val navigator = LocalNavigator.currentOrThrow
 
         return listOf(
             Preference.PreferenceItem.ListPreference(
@@ -72,6 +75,7 @@ object SettingsReaderScreen : SearchableSettings {
             getNavigationGroup(readerPreferences = readerPref),
             getActionsGroup(readerPreferences = readerPref),
             getVideoGroup(readerPreferences = readerPref),
+            getReadAloudGroup(navigator = navigator),
         )
     }
 
@@ -479,6 +483,21 @@ object SettingsReaderScreen : SearchableSettings {
                     preference = readerPreferences.videoLockLandscape,
                     title = stringResource(MR.strings.pref_video_lock_landscape),
                     subtitle = stringResource(MR.strings.pref_video_lock_landscape_summary),
+                ),
+            ),
+        )
+    }
+
+    private fun getReadAloudGroup(navigator: cafe.adriel.voyager.navigator.Navigator): Preference.PreferenceGroup {
+        return Preference.PreferenceGroup(
+            title = "Read Aloud (ElevenLabs)",
+            preferenceItems = listOf(
+                Preference.PreferenceItem.TextPreference(
+                    title = "Configure Read Aloud",
+                    subtitle = "ElevenLabs expressive voices, dialogue split, emotion tags, and offline OCR",
+                    onClick = {
+                        navigator.push(mihon.feature.readaloud.presentation.ReadAloudSettingsScreen())
+                    },
                 ),
             ),
         )

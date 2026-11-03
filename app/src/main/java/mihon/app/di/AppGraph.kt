@@ -134,6 +134,9 @@ interface AppGraph : ViewModelGraph {
     // CUSTOM: Feature D - Video Chapter Detector
     val videoChapterDetector: eu.kanade.tachiyomi.ui.player.detector.DefaultVideoChapterDetector
 
+    // CUSTOM: ReadAloud - ElevenLabs & OCR TTS Pipeline
+    val readAloudPipeline: mihon.feature.readaloud.service.ReadAloudPipeline
+
     @DependencyGraph.Factory
     fun interface Factory {
         fun create(@Provides context: Context, @Provides @IsDebugBuild isDebugBuild: Boolean): AppGraph

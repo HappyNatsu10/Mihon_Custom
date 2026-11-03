@@ -752,12 +752,22 @@ private fun LazyListScope.sharedChapterItems(
                     },
                     date = relativeDateText(item.chapter.dateUpload),
                     readProgress = item.chapter.lastPageRead
-                        .takeIf { !item.chapter.read && it > 0L }
+                        .takeIf { !item.chapter.read && it > 0 }
                         ?.let {
-                            stringResource(
-                                MR.strings.chapter_progress,
-                                it + 1,
-                            )
+                            if (it >= 60) {
+                                val (part, secs) = eu.kanade.tachiyomi.ui.player.helper.VideoProgressHelper.decode(
+                                    it.toLong(),
+                                )
+                                val m = secs / 60
+                                val s = secs % 60
+                                val timeStr = "%02d:%02d".format(m, s)
+                                if (part > 0) "Part ${part + 1} · $timeStr" else timeStr
+                            } else {
+                                stringResource(
+                                    MR.strings.chapter_progress,
+                                    it + 1,
+                                )
+                            }
                         },
                     scanlator = item.chapter.scanlator.takeIf { !it.isNullOrBlank() },
                     read = item.chapter.read,

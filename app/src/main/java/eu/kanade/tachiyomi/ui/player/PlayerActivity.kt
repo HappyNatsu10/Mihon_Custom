@@ -21,6 +21,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -39,7 +40,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -48,14 +51,17 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -76,10 +82,12 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
+import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -178,6 +186,7 @@ class PlayerActivity : AppCompatActivity() {
         setComposeContent {
             PlayerScreen(
                 viewModel = viewModel,
+                isInPipMode = isInPipMode,
                 onGetPlayer = { getOrCreatePlayer() },
                 onReleasePlayer = { releasePlayer() },
                 onFinish = { finish() },
@@ -186,6 +195,27 @@ class PlayerActivity : AppCompatActivity() {
                 onToggleOrientation = ::toggleOrientation,
             )
         }
+    }
+
+    private var isInPipMode by mutableStateOf(false)
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && exoPlayer?.isPlaying == true) {
+            try {
+                val width = exoPlayer?.videoSize?.width?.takeIf { it > 0 } ?: 16
+                val height = exoPlayer?.videoSize?.height?.takeIf { it > 0 } ?: 9
+                val params = android.app.PictureInPictureParams.Builder()
+                    .setAspectRatio(android.util.Rational(width.coerceIn(1, 10000), height.coerceIn(1, 10000)))
+                    .build()
+                enterPictureInPictureMode(params)
+            } catch (_: Exception) {}
+        }
+    }
+
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        isInPipMode = isInPictureInPictureMode
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -316,6 +346,7 @@ class PlayerActivity : AppCompatActivity() {
 @Composable
 fun PlayerScreen(
     viewModel: PlayerViewModel,
+    isInPipMode: Boolean = false,
     onGetPlayer: () -> ExoPlayer,
     onReleasePlayer: () -> Unit,
     onFinish: () -> Unit,
@@ -332,9 +363,25 @@ fun PlayerScreen(
     var durationMs by remember { mutableLongStateOf(0L) }
     var controlsVisible by remember { mutableStateOf(true) }
     var showSpeedDialog by remember { mutableStateOf(false) }
+    var showTracksDialog by remember { mutableStateOf(false) }
     var isZoomMode by remember { mutableStateOf(false) }
 
+    var hudType by remember { mutableStateOf<String?>(null) }
+    var hudValue by remember { mutableFloatStateOf(0f) }
+    var isDragging by remember { mutableStateOf(false) }
+
+    val context = LocalContext.current
+    val audioManager = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
+    val maxVolume = remember { audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC).toFloat().coerceAtLeast(1f) }
+
     val skipSeconds = viewModel.readerPreferences.videoSkipInterval.get()
+
+    LaunchedEffect(isDragging, hudType) {
+        if (!isDragging && hudType != null) {
+            kotlinx.coroutines.delay(1200)
+            hudType = null
+        }
+    }
 
     // Control system bars (immersive full-screen)
     LaunchedEffect(controlsVisible) {
@@ -389,7 +436,6 @@ fun PlayerScreen(
     }
 
     // Load media items into player when playlist changes
-    val context = LocalContext.current
     LaunchedEffect(state.playlist, state.currentChapter?.id) {
         val p = player ?: return@LaunchedEffect
         p.stop()
@@ -521,8 +567,86 @@ fun PlayerScreen(
                             }
                         },
                     )
+                }
+                .pointerInput(Unit) {
+                    detectVerticalDragGestures(
+                        onDragStart = { offset ->
+                            isDragging = true
+                            if (offset.x < size.width * 0.35f) {
+                                hudType = "brightness"
+                                val cur = (context as? AppCompatActivity)?.window?.attributes?.screenBrightness ?: 0.5f
+                                hudValue = if (cur < 0) 0.5f else cur
+                            } else if (offset.x > size.width * 0.65f) {
+                                hudType = "volume"
+                                val curVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                                hudValue = curVol / maxVolume
+                            } else {
+                                hudType = null
+                            }
+                        },
+                        onVerticalDrag = { change, dragAmount ->
+                            change.consume()
+                            if (hudType == "brightness") {
+                                val delta = -dragAmount / size.height.toFloat()
+                                hudValue = (hudValue + delta).coerceIn(0.01f, 1.0f)
+                                (context as? AppCompatActivity)?.window?.let { w ->
+                                    w.attributes = w.attributes.apply { screenBrightness = hudValue }
+                                }
+                            } else if (hudType == "volume") {
+                                val delta = -dragAmount / size.height.toFloat()
+                                hudValue = (hudValue + delta).coerceIn(0f, 1f)
+                                val newVol = (hudValue * maxVolume).toInt()
+                                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVol, 0)
+                            }
+                        },
+                        onDragEnd = { isDragging = false },
+                        onDragCancel = { isDragging = false },
+                    )
                 },
         )
+
+        // Floating Volume / Brightness HUD Indicator
+        if (hudType != null) {
+            Surface(
+                color = Color.Black.copy(alpha = 0.8f),
+                shape = CircleShape,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .padding(16.dp),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Icon(
+                        painter = painterResource(
+                            if (hudType == "volume") R.drawable.ic_volume_up else R.drawable.ic_brightness,
+                        ),
+                        contentDescription = hudType,
+                        tint = Color.White,
+                        modifier = Modifier.size(24.dp),
+                    )
+                    Slider(
+                        value = hudValue,
+                        onValueChange = {},
+                        valueRange = 0f..1f,
+                        modifier = Modifier.width(110.dp),
+                        colors = SliderDefaults.colors(
+                            thumbColor = Color.White,
+                            activeTrackColor = MaterialTheme.colorScheme.primary,
+                            inactiveTrackColor = Color.White.copy(alpha = 0.3f),
+                        ),
+                    )
+                    Text(
+                        text = "${(hudValue * 100).toInt()}%",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                    )
+                }
+            }
+        }
 
         // Buffering Indicator
         if (isBuffering || state.isLoading) {
@@ -583,7 +707,7 @@ fun PlayerScreen(
 
         // Controls Overlay
         AnimatedVisibility(
-            visible = controlsVisible,
+            visible = controlsVisible && !isInPipMode,
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier.fillMaxSize(),
@@ -912,6 +1036,15 @@ fun PlayerScreen(
                             }
                         }
 
+                        // Audio & Subtitle Tracks Selector
+                        IconButton(onClick = { showTracksDialog = true }) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_subtitles),
+                                contentDescription = "Tracks",
+                                tint = Color.White,
+                            )
+                        }
+
                         // Rotation Toggle in Bottom Controls
                         IconButton(onClick = onToggleOrientation) {
                             Icon(
@@ -955,6 +1088,145 @@ fun PlayerScreen(
                     }
                 }
             }
+        }
+
+        if (showTracksDialog) {
+            val tracks = player?.currentTracks
+            val audioGroups = tracks?.groups?.filter { it.type == C.TRACK_TYPE_AUDIO } ?: emptyList()
+            val subtitleGroups = tracks?.groups?.filter { it.type == C.TRACK_TYPE_TEXT } ?: emptyList()
+
+            AlertDialog(
+                onDismissRequest = { showTracksDialog = false },
+                title = { Text(text = "Audio & Subtitle Tracks") },
+                text = {
+                    LazyColumn {
+                        item {
+                            Text(
+                                text = "Audio",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(vertical = 4.dp),
+                            )
+                        }
+                        if (audioGroups.isEmpty()) {
+                            item {
+                                Text(text = "Default Audio", style = MaterialTheme.typography.bodyMedium)
+                            }
+                        } else {
+                            audioGroups.forEach { group ->
+                                for (i in 0 until group.length) {
+                                    val format = group.getTrackFormat(i)
+                                    val isSelected = group.isTrackSelected(i)
+                                    val label = format.label ?: format.language ?: "Audio ${i + 1}"
+                                    item {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable {
+                                                    player?.let { p ->
+                                                        p.trackSelectionParameters = p.trackSelectionParameters
+                                                            .buildUpon()
+                                                            .setOverrideForType(
+                                                                TrackSelectionOverride(group.mediaTrackGroup, i),
+                                                            )
+                                                            .build()
+                                                    }
+                                                }
+                                                .padding(vertical = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            RadioButton(
+                                                selected = isSelected,
+                                                onClick = null,
+                                            )
+                                            Spacer(Modifier.width(8.dp))
+                                            Text(text = label, style = MaterialTheme.typography.bodyMedium)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        item {
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                text = "Subtitles",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(vertical = 4.dp),
+                            )
+                        }
+
+                        val isSubDisabled = player?.trackSelectionParameters?.disabledTrackTypes?.contains(
+                            C.TRACK_TYPE_TEXT,
+                        ) == true || subtitleGroups.none { it.isSelected }
+
+                        item {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        player?.let { p ->
+                                            p.trackSelectionParameters = p.trackSelectionParameters
+                                                .buildUpon()
+                                                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                                                .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                                                .build()
+                                        }
+                                    }
+                                    .padding(vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                RadioButton(
+                                    selected = isSubDisabled,
+                                    onClick = null,
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(text = "Off", style = MaterialTheme.typography.bodyMedium)
+                            }
+                        }
+
+                        subtitleGroups.forEach { group ->
+                            for (i in 0 until group.length) {
+                                val format = group.getTrackFormat(i)
+                                val isSelected = !isSubDisabled && group.isTrackSelected(i)
+                                val label = format.label ?: format.language ?: "Subtitle ${i + 1}"
+                                item {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                player?.let { p ->
+                                                    p.trackSelectionParameters = p.trackSelectionParameters
+                                                        .buildUpon()
+                                                        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                                                        .setOverrideForType(
+                                                            TrackSelectionOverride(group.mediaTrackGroup, i),
+                                                        )
+                                                        .build()
+                                                }
+                                            }
+                                            .padding(vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        RadioButton(
+                                            selected = isSelected,
+                                            onClick = null,
+                                        )
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(text = label, style = MaterialTheme.typography.bodyMedium)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showTracksDialog = false }) {
+                        Text(text = stringResource(MR.strings.action_ok))
+                    }
+                },
+            )
         }
     }
 }

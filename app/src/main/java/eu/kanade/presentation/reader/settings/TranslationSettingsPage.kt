@@ -20,7 +20,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderSettingsViewModel
 import eu.kanade.tachiyomi.ui.reader.translate.TranslationPipeline
+import eu.kanade.tachiyomi.ui.reader.translate.mlkit.MlKitTranslator
 import eu.kanade.tachiyomi.util.system.toast
+import kotlinx.coroutines.launch
 import mihon.app.di.AppGraph
 import mihon.core.metro.metroGraph
 import tachiyomi.core.common.i18n.stringResource
@@ -110,6 +112,101 @@ internal fun ColumnScope.TranslationSettingsPage(viewModel: ReaderSettingsViewMo
                     onClick = { viewModel.preferences.readerTranslationTarget.set(code) },
                     label = { Text(name) },
                 )
+            }
+        }
+
+        if (provider == "mlkit") {
+            val scope = androidx.compose.runtime.rememberCoroutineScope()
+            var jaDownloaded by remember { mutableStateOf(false) }
+            var koDownloaded by remember { mutableStateOf(false) }
+            var zhDownloaded by remember { mutableStateOf(false) }
+
+            androidx.compose.runtime.LaunchedEffect(Unit) {
+                jaDownloaded = eu.kanade.tachiyomi.ui.reader.translate.mlkit.MlKitTranslator.isModelDownloaded("ja")
+                koDownloaded = eu.kanade.tachiyomi.ui.reader.translate.mlkit.MlKitTranslator.isModelDownloaded("ko")
+                zhDownloaded = eu.kanade.tachiyomi.ui.reader.translate.mlkit.MlKitTranslator.isModelDownloaded("zh")
+            }
+
+            androidx.compose.material3.Surface(
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                shape = MaterialTheme.shapes.medium,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = MaterialTheme.padding.medium, vertical = 6.dp),
+            ) {
+                androidx.compose.foundation.layout.Column(
+                    modifier = Modifier.padding(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Text(
+                        text = "Offline Language Models",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                    )
+                    Text(
+                        text = "Pre-download models for 100% offline reading without internet:",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        FilterChip(
+                            selected = jaDownloaded,
+                            onClick = {
+                                scope.launch {
+                                    if (jaDownloaded) {
+                                        MlKitTranslator.deleteModel("ja")
+                                        jaDownloaded = false
+                                        context.toast("Japanese model deleted")
+                                    } else {
+                                        context.toast("Downloading Japanese model...")
+                                        val ok = MlKitTranslator.downloadModel("ja")
+                                        jaDownloaded = ok
+                                        context.toast(if (ok) "Japanese model downloaded!" else "Download failed")
+                                    }
+                                }
+                            },
+                            label = { Text("Japanese " + if (jaDownloaded) "✓" else "⬇") },
+                        )
+                        FilterChip(
+                            selected = koDownloaded,
+                            onClick = {
+                                scope.launch {
+                                    if (koDownloaded) {
+                                        MlKitTranslator.deleteModel("ko")
+                                        koDownloaded = false
+                                        context.toast("Korean model deleted")
+                                    } else {
+                                        context.toast("Downloading Korean model...")
+                                        val ok = MlKitTranslator.downloadModel("ko")
+                                        koDownloaded = ok
+                                        context.toast(if (ok) "Korean model downloaded!" else "Download failed")
+                                    }
+                                }
+                            },
+                            label = { Text("Korean " + if (koDownloaded) "✓" else "⬇") },
+                        )
+                        FilterChip(
+                            selected = zhDownloaded,
+                            onClick = {
+                                scope.launch {
+                                    if (zhDownloaded) {
+                                        MlKitTranslator.deleteModel("zh")
+                                        zhDownloaded = false
+                                        context.toast("Chinese model deleted")
+                                    } else {
+                                        context.toast("Downloading Chinese model...")
+                                        val ok = MlKitTranslator.downloadModel("zh")
+                                        zhDownloaded = ok
+                                        context.toast(if (ok) "Chinese model downloaded!" else "Download failed")
+                                    }
+                                }
+                            },
+                            label = { Text("Chinese " + if (zhDownloaded) "✓" else "⬇") },
+                        )
+                    }
+                }
             }
         }
 

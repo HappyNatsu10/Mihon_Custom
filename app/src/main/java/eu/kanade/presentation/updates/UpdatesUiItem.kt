@@ -146,12 +146,22 @@ internal fun LazyListScope.updatesUiItems(
                     update = updatesItem.update,
                     selected = updatesItem.selected,
                     readProgress = updatesItem.update.lastPageRead
-                        .takeIf { !updatesItem.update.read && it > 0L }
+                        .takeIf { !updatesItem.update.read && it > 0 }
                         ?.let {
-                            stringResource(
-                                MR.strings.chapter_progress,
-                                it + 1,
-                            )
+                            if (it >= 60) {
+                                val (part, secs) = eu.kanade.tachiyomi.ui.player.helper.VideoProgressHelper.decode(
+                                    it.toLong(),
+                                )
+                                val m = secs / 60
+                                val s = secs % 60
+                                val timeStr = "%02d:%02d".format(m, s)
+                                if (part > 0) "Part ${part + 1} · $timeStr" else timeStr
+                            } else {
+                                stringResource(
+                                    MR.strings.chapter_progress,
+                                    it + 1,
+                                )
+                            }
                         },
                     onLongClick = {
                         onUpdateSelected(updatesItem, !updatesItem.selected, true)
