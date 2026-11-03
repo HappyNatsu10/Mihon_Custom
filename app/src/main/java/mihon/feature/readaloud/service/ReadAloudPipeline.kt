@@ -2,11 +2,13 @@ package mihon.feature.readaloud.service
 
 import android.content.Context
 import android.graphics.BitmapFactory
+import android.widget.Toast
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
+import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import logcat.LogPriority
@@ -14,6 +16,7 @@ import logcat.logcat
 import mihon.feature.readaloud.cache.ReadAloudAudioCache
 import mihon.feature.readaloud.cleaner.TextCleaner
 import mihon.feature.readaloud.client.ElevenLabsClient
+import mihon.feature.readaloud.client.ElevenLabsException
 import mihon.feature.readaloud.director.AnthropicDirector
 import mihon.feature.readaloud.director.RuleBasedDirector
 import mihon.feature.readaloud.director.TextDirector
@@ -119,29 +122,55 @@ class ReadAloudPipeline(
         val narratorId = preferences.narratorVoiceId.get().ifBlank { ElevenLabsClient.DEFAULT_NARRATOR_VOICE_ID }
         val secondaryId = preferences.secondaryVoiceId.get().ifBlank { ElevenLabsClient.DEFAULT_SECONDARY_VOICE_ID }
         val lang = preferences.textLanguage.get()
-        val model = "eleven_v3"
+        val model = preferences.elevenLabsModel.get().ifBlank { ElevenLabsClient.DEFAULT_MODEL_ID }
+        val multiVoice = preferences.multipleVoices.get()
 
         val cacheKey = ReadAloudAudioCache.computeKey(turns, narratorId, secondaryId, model, lang)
         var audioFile = cache.getAudioFile(cacheKey)
 
         if (audioFile == null) {
             val targetFile = cache.getTargetAudioFile(cacheKey)
-            audioFile = elevenLabsClient.textToDialogue(
-                turns = turns,
-                narratorVoiceId = narratorId,
-                secondaryVoiceId = secondaryId,
-                languageCode = lang,
-                modelId = model,
-                outputFile = targetFile,
-            )
+            try {
+                audioFile = elevenLabsClient.synthesize(
+                    turns = turns,
+                    narratorVoiceId = narratorId,
+                    secondaryVoiceId = secondaryId,
+                    languageCode = lang,
+                    modelId = model,
+                    multipleVoices = multiVoice,
+                    outputFile = targetFile,
+                )
 
-            // Update on-device character counter
-            val newTotal = preferences.characterCount.get() + totalChars
-            preferences.characterCount.set(newTotal)
+                // Update on-device character counter
+                val newTotal = preferences.characterCount.get() + totalChars
+                preferences.characterCount.set(newTotal)
 
-            // Trim cache if needed
-            val maxMb = preferences.audioCacheLimitMb.get().coerceAtLeast(50)
-            cache.trimToSize(maxMb * 1024L * 1024L)
+                // Trim cache if needed
+                val maxMb = preferences.audioCacheLimitMb.get().coerceAtLeast(50)
+                cache.trimToSize(maxMb * 1024L * 1024L)
+            } catch (e: ElevenLabsException) {
+                logcat(LogPriority.WARN) { "ElevenLabs synthesis failed (${e.statusCode}): ${e.message}" }
+                if (preferences.fallbackToAndroidTts.get()) {
+                    withContext(Dispatchers.Main) {
+                        context.toast("${e.message} Using built-in voice.", Toast.LENGTH_LONG)
+                        player.playWithTts(turns, lang, page.number, onSessionComplete)
+                    }
+                    return@withContext
+                } else {
+                    throw e
+                }
+            } catch (e: Exception) {
+                logcat(LogPriority.ERROR) { "ElevenLabs synthesis unexpected error: ${e.message}" }
+                if (preferences.fallbackToAndroidTts.get()) {
+                    withContext(Dispatchers.Main) {
+                        context.toast("ElevenLabs error: ${e.message}. Using built-in voice.", Toast.LENGTH_LONG)
+                        player.playWithTts(turns, lang, page.number, onSessionComplete)
+                    }
+                    return@withContext
+                } else {
+                    throw e
+                }
+            }
         }
 
         withContext(Dispatchers.Main) {

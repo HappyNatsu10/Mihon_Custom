@@ -1,28 +1,32 @@
 package mihon.feature.readaloud.presentation
 
+import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -43,15 +47,23 @@ import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.coroutines.launch
 import mihon.app.di.AppGraph
 import mihon.core.metro.metroGraph
+import mihon.feature.readaloud.client.ElevenLabsClient
 import mihon.feature.readaloud.model.DirectorEngine
+import mihon.feature.readaloud.model.ElevenLabsModel
+import mihon.feature.readaloud.model.ElevenLabsSubscription
 import mihon.feature.readaloud.model.ElevenLabsVoice
 import mihon.feature.readaloud.model.TextSide
+import mihon.feature.readaloud.model.Turn
 import mihon.feature.readaloud.model.VoiceEngine
 import mihon.icons.materialsymbols.MaterialSymbols
 import mihon.icons.materialsymbols.automirroredrounded.ArrowBack
 import tachiyomi.presentation.core.components.CheckboxItem
 import tachiyomi.presentation.core.components.material.padding
 import tachiyomi.presentation.core.util.collectAsState
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class ReadAloudSettingsScreen : Screen() {
 
@@ -67,6 +79,8 @@ class ReadAloudSettingsScreen : Screen() {
         val enabled by prefs.enableReadAloud.collectAsState()
         val voiceEngine by prefs.voiceEngine.collectAsState()
         val elevenLabsApiKey by prefs.elevenLabsApiKey.collectAsState()
+        val elevenLabsModel by prefs.elevenLabsModel.collectAsState()
+        val fallbackToAndroidTts by prefs.fallbackToAndroidTts.collectAsState()
         val narratorVoiceId by prefs.narratorVoiceId.collectAsState()
         val secondaryVoiceId by prefs.secondaryVoiceId.collectAsState()
         val textSide by prefs.textSide.collectAsState()
@@ -80,13 +94,27 @@ class ReadAloudSettingsScreen : Screen() {
 
         var cacheSizeBytes by remember { mutableLongStateOf(pipeline.cache.getCacheSizeBytes()) }
         var availableVoices by remember { mutableStateOf<List<ElevenLabsVoice>>(emptyList()) }
+        var subscription by remember { mutableStateOf<ElevenLabsSubscription?>(null) }
         var isFetchingVoices by remember { mutableStateOf(false) }
+        var isFetchingSubscription by remember { mutableStateOf(false) }
+        var isTestingVoice by remember { mutableStateOf(false) }
 
         LaunchedEffect(elevenLabsApiKey) {
             if (elevenLabsApiKey.isNotBlank()) {
                 isFetchingVoices = true
-                availableVoices = pipeline.elevenLabsClient.fetchVoices()
+                isFetchingSubscription = true
+                try {
+                    availableVoices = pipeline.elevenLabsClient.fetchVoices()
+                } catch (_: Exception) {}
                 isFetchingVoices = false
+
+                try {
+                    subscription = pipeline.elevenLabsClient.fetchSubscription()
+                } catch (_: Exception) {}
+                isFetchingSubscription = false
+            } else {
+                availableVoices = emptyList()
+                subscription = null
             }
         }
 
@@ -150,6 +178,219 @@ class ReadAloudSettingsScreen : Screen() {
                                     singleLine = true,
                                 )
 
+                                // Model Selection
+                                Text(
+                                    text = "Speech Model",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    ElevenLabsModel.entries.forEach { modelItem ->
+                                        FilterChip(
+                                            selected = elevenLabsModel == modelItem.id,
+                                            onClick = { prefs.elevenLabsModel.set(modelItem.id) },
+                                            label = { Text(modelItem.title) },
+                                            modifier = Modifier.fillMaxWidth(),
+                                        )
+                                    }
+                                }
+
+                                val selectedModelObj = ElevenLabsModel.fromId(elevenLabsModel)
+                                Text(
+                                    text = selectedModelObj.description,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+
+                                // Subscription & Credit Status Card
+                                if (elevenLabsApiKey.isNotBlank()) {
+                                    Card(
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = MaterialTheme.colorScheme
+                                                .surfaceColorAtElevation(1.dp),
+                                        ),
+                                        modifier = Modifier.fillMaxWidth(),
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(12.dp),
+                                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically,
+                                            ) {
+                                                Text(
+                                                    text = "Account & Credits",
+                                                    style = MaterialTheme.typography.titleSmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                )
+                                                if (isFetchingSubscription) {
+                                                    CircularProgressIndicator(
+                                                        modifier = Modifier.size(16.dp),
+                                                        strokeWidth = 2.dp,
+                                                    )
+                                                }
+                                            }
+
+                                            if (subscription != null) {
+                                                val sub = subscription!!
+                                                Row(
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                ) {
+                                                    Surface(
+                                                        shape = RoundedCornerShape(12.dp),
+                                                        color = if (sub.isFreeTier) {
+                                                            MaterialTheme.colorScheme.secondaryContainer
+                                                        } else {
+                                                            MaterialTheme.colorScheme.primaryContainer
+                                                        },
+                                                    ) {
+                                                        val tierName = sub.tier.replaceFirstChar { it.uppercase() }
+                                                        Text(
+                                                            text = "$tierName Tier",
+                                                            modifier = Modifier.padding(
+                                                                horizontal = 8.dp,
+                                                                vertical = 2.dp,
+                                                            ),
+                                                            style = MaterialTheme.typography.labelMedium,
+                                                            fontWeight = FontWeight.SemiBold,
+                                                        )
+                                                    }
+
+                                                    Text(
+                                                        text = "Status: ${sub.status}",
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    )
+                                                }
+
+                                                val limit = sub.characterLimit
+                                                val used = sub.characterCount
+                                                val remaining = sub.remainingCharacters
+                                                val remainingStr = "($remaining remaining)"
+                                                Text(
+                                                    text = "Quota: $used / $limit used $remainingStr",
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    fontWeight = FontWeight.Medium,
+                                                )
+
+                                                if (limit > 0) {
+                                                    val fraction = used.toFloat() / limit.toFloat()
+                                                    val progress = fraction.coerceIn(0f, 1f)
+                                                    LinearProgressIndicator(
+                                                        progress = { progress },
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                    )
+                                                }
+
+                                                if (sub.nextResetUnix != null && sub.nextResetUnix > 0) {
+                                                    val sdf = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
+                                                    val dateStr = sdf.format(Date(sub.nextResetUnix * 1000L))
+                                                    Text(
+                                                        text = "Credit renewal date: $dateStr",
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    )
+                                                }
+
+                                                if (sub.isFreeTier) {
+                                                    Text(
+                                                        text = "Tip: Free accounts get 10,000 credits/mo. " +
+                                                            "Turbo v2.5 costs 0.5 credits/char. " +
+                                                            "Eleven v3 requires a paid subscription.",
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.primary,
+                                                    )
+                                                }
+
+                                                if (sub.isQuotaExhausted) {
+                                                    Text(
+                                                        text = "Warning: Monthly quota exhausted! " +
+                                                            "Built-in TTS will be used as fallback.",
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.error,
+                                                        fontWeight = FontWeight.Bold,
+                                                    )
+                                                }
+                                            } else if (!isFetchingSubscription) {
+                                                Text(
+                                                    text = "Could not fetch subscription info. " +
+                                                        "Check your API key and connection.",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.error,
+                                                )
+                                            }
+
+                                            Row(
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                modifier = Modifier.fillMaxWidth(),
+                                            ) {
+                                                OutlinedButton(
+                                                    onClick = {
+                                                        scope.launch {
+                                                            isFetchingSubscription = true
+                                                            subscription =
+                                                                pipeline.elevenLabsClient.fetchSubscription()
+                                                            isFetchingSubscription = false
+                                                        }
+                                                    },
+                                                    modifier = Modifier.weight(1f),
+                                                ) {
+                                                    Text("Refresh")
+                                                }
+
+                                                Button(
+                                                    onClick = {
+                                                        scope.launch {
+                                                            isTestingVoice = true
+                                                            try {
+                                                                val testFile =
+                                                                    File(context.cacheDir, "test_voice.mp3")
+                                                                val defaultNarrator =
+                                                                    ElevenLabsClient.DEFAULT_NARRATOR_VOICE_ID
+                                                                val defaultModel =
+                                                                    ElevenLabsClient.DEFAULT_MODEL_ID
+                                                                val voiceId =
+                                                                    narratorVoiceId.ifBlank { defaultNarrator }
+                                                                val modelId =
+                                                                    elevenLabsModel.ifBlank { defaultModel }
+                                                                val testPhrase =
+                                                                    "Hello! ElevenLabs voice is working properly."
+                                                                pipeline.elevenLabsClient.textToSpeech(
+                                                                    text = testPhrase,
+                                                                    voiceId = voiceId,
+                                                                    modelId = modelId,
+                                                                    outputFile = testFile,
+                                                                )
+                                                                pipeline.player.playAudioFile(
+                                                                    file = testFile,
+                                                                    turns = listOf(
+                                                                        Turn("Narrator", "Voice test successful."),
+                                                                    ),
+                                                                    pageNumber = 1,
+                                                                    onComplete = {},
+                                                                )
+                                                                context.toast("Playing ElevenLabs voice preview!")
+                                                            } catch (e: Exception) {
+                                                                val msg = "Test failed: ${e.message}"
+                                                                context.toast(msg, Toast.LENGTH_LONG)
+                                                            } finally {
+                                                                isTestingVoice = false
+                                                            }
+                                                        }
+                                                    },
+                                                    enabled = !isTestingVoice,
+                                                    modifier = Modifier.weight(1f),
+                                                ) {
+                                                    Text(if (isTestingVoice) "Testing..." else "Test Voice")
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
                                 OutlinedTextField(
                                     value = narratorVoiceId,
                                     onValueChange = { prefs.narratorVoiceId.set(it) },
@@ -169,8 +410,9 @@ class ReadAloudSettingsScreen : Screen() {
                                 }
 
                                 if (availableVoices.isNotEmpty()) {
+                                    val count = availableVoices.size
                                     Text(
-                                        text = "${availableVoices.size} voices available on your ElevenLabs account",
+                                        text = "$count voices available on your account",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.primary,
                                     )
@@ -178,6 +420,12 @@ class ReadAloudSettingsScreen : Screen() {
                             }
                         }
                     }
+
+                    // Fallback to Built-in TTS
+                    CheckboxItem(
+                        label = "Fallback to Built-in TTS if ElevenLabs errors or quota is exhausted",
+                        pref = prefs.fallbackToAndroidTts,
+                    )
 
                     // Text Region / Side
                     ChipRow("Text Region (Artwork vs Text)") {

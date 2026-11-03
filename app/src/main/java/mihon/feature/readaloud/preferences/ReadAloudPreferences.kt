@@ -26,6 +26,16 @@ class ReadAloudPreferences(
         "elevenlabs",
     )
 
+    val elevenLabsModel: Preference<String> = preferenceStore.getString(
+        "pref_read_aloud_elevenlabs_model",
+        "eleven_turbo_v2_5",
+    )
+
+    val fallbackToAndroidTts: Preference<Boolean> = preferenceStore.getBoolean(
+        "pref_read_aloud_fallback_tts",
+        true,
+    )
+
     val narratorVoiceId: Preference<String> = preferenceStore.getString(
         "pref_read_aloud_narrator_voice_id",
         "21m00Tcm4TlvDq8ikWAM",
