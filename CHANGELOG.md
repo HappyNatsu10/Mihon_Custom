@@ -11,32 +11,28 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - `Other` - for technical stuff.
 
 ## [Unreleased]
+
+## [v0.21.3] - 2026-10-26
 ### Added
-- Add experimental high quality reader renderer (Settings → Advanced → Use high quality renderer) with better image scaling, page transition animations, dual page view and display cutout handling ([@wwww-wwww](https://github.com/wwww-wwww)) ([#3388](https://github.com/mihonapp/mihon/pull/3388))
-  - Match background and transition page colors to the old reader ([@AntsyLich](https://github.com/AntsyLich)) ([#3765](https://github.com/mihonapp/mihon/pull/3765))
-  - Support the Fit width, Fit height and Original size scale types and the zoom start position ([@wwww-wwww](https://github.com/wwww-wwww)) ([#3801](https://github.com/mihonapp/mihon/pull/3801))
-  - Fix preloading and navigation across chapters, and right-to-left navigation ([@wwww-wwww](https://github.com/wwww-wwww)) ([#3823](https://github.com/mihonapp/mihon/pull/3823))
-  - Add a "None" page transition and fix the background color of animated images ([@wwww-wwww](https://github.com/wwww-wwww)) ([#3843](https://github.com/mihonapp/mihon/pull/3843))
-  - Improve transition and error pages, dual page animations and border cropping ([@wwww-wwww](https://github.com/wwww-wwww)) ([#3852](https://github.com/mihonapp/mihon/pull/3852))
-  - Fix navigation directions and long strip bounds, and fade in loaded pages ([@wwww-wwww](https://github.com/wwww-wwww)) ([#3870](https://github.com/mihonapp/mihon/pull/3870))
-  - Add a "Page flip" transition, a long strip minimum width setting and separate dual page settings, and show wide pages on their own in dual page view ([@wwww-wwww](https://github.com/wwww-wwww)) ([#3886](https://github.com/mihonapp/mihon/pull/3886))
-  - Fix freezes and running out of memory when jumping between pages with the slider ([@Danidukiyu](https://github.com/Danidukiyu)) ([#3872](https://github.com/mihonapp/mihon/pull/3872))
-  - Add HDR, ICC color profile and EXIF orientation support ([@wwww-wwww](https://github.com/wwww-wwww)) ([#3933](https://github.com/mihonapp/mihon/pull/3933))
-  - Add a page gap setting for long strip with gaps and a "Disable zoom out" setting for long strip modes ([@wwww-wwww](https://github.com/wwww-wwww)) ([#3933](https://github.com/mihonapp/mihon/pull/3933))
-  - Fix a crash on Android 15 and long strip progress and background color ([@wwww-wwww](https://github.com/wwww-wwww)) ([#3949](https://github.com/mihonapp/mihon/pull/3949))
-  - Keep the reader menu open while moving through pages with the slider ([@wwww-wwww](https://github.com/wwww-wwww)) ([#3956](https://github.com/mihonapp/mihon/pull/3956))
-  - Show pages progressively while they download ([@wwww-wwww](https://github.com/wwww-wwww)) ([#4023](https://github.com/mihonapp/mihon/pull/4023))
-  - Lower memory use for animated images and support cropping borders in long strip ([@wwww-wwww](https://github.com/wwww-wwww)) ([#4029](https://github.com/mihonapp/mihon/pull/4029))
-  - Pair more wide pages in dual page view by comparing them with neighbouring pages ([@wwww-wwww](https://github.com/wwww-wwww)) ([#4051](https://github.com/mihonapp/mihon/pull/4051))
+- Add a Time Format setting to customize how times are displayed ([@MajorTanya](https://github.com/MajorTanya)) ([#4118](https://github.com/mihonapp/mihon/pull/4118))
 
 ### Changed
-- Use a new decoder for images Android can't decode itself, like AVIF, JPEG XL and HEIF, and support JPEG 2000 images ([@wwww-wwww](https://github.com/wwww-wwww)) ([#3786](https://github.com/mihonapp/mihon/pull/3786))
+- Update the sources with the most entries first during library updates ([@AntsyLich](https://github.com/AntsyLich)) ([`b8070cd`](https://github.com/mihonapp/mihon/commit/b8070cd))
 
 ### Improved
-- Create and restore backups faster and with less memory ([@NGB-Was-Taken](https://github.com/NGB-Was-Taken), [@AntsyLich](https://github.com/AntsyLich))
+- Create and restore backups faster and with less memory ([@NGB-Was-Taken](https://github.com/NGB-Was-Taken), [@AntsyLich](https://github.com/AntsyLich)) ([`771ba33`](https://github.com/mihonapp/mihon/commit/771ba33))
+  - Read backups faster before restoring, and decode each entry only once while restoring ([@AntsyLich](https://github.com/AntsyLich)) ([`3ed83a8`](https://github.com/mihonapp/mihon/commit/3ed83a8))
 
 ### Removed
-- Remove "Custom hardware bitmap threshold" and "Custom display profile" advanced settings ([@wwww-wwww](https://github.com/wwww-wwww)) ([#3786](https://github.com/mihonapp/mihon/pull/3786))
+- Remove the "Split tall images" download setting ([@AntsyLich](https://github.com/AntsyLich)) ([`8b9faa3`](https://github.com/mihonapp/mihon/commit/8b9faa3))
+
+### Fixed
+- Fixed WebView crashing for sources that set an Origin header ([@AntsyLich](https://github.com/AntsyLich)) ([`5f63c98`](https://github.com/mihonapp/mihon/commit/5f63c98))
+- Fixed WebView sending source headers to other sites ([@AntsyLich](https://github.com/AntsyLich)) ([`a01867d`](https://github.com/mihonapp/mihon/commit/a01867d))
+- Fixed downloads not showing for entries of a source sharing its name with another source ([@AntsyLich](https://github.com/AntsyLich)) ([`deeb9b2`](https://github.com/mihonapp/mihon/commit/deeb9b2))
+- Fixed covers reloading when removing an entry from the library ([@AntsyLich](https://github.com/AntsyLich)) ([`a424282`](https://github.com/mihonapp/mihon/commit/a424282))
+- Fixed the More tab icon pausing and then bouncing back when leaving the tab ([@AntsyLich](https://github.com/AntsyLich)) ([`2ca6961`](https://github.com/mihonapp/mihon/commit/2ca6961))
+- Fixed Shizuku extension installer being unavailable with Sui ([@AntsyLich](https://github.com/AntsyLich)) ([`bd2ada2`](https://github.com/mihonapp/mihon/commit/bd2ada2))
 
 ## [v0.21.2] - 2026-10-13
 ### Fixed
@@ -812,12 +808,9 @@ Same as v0.19.6
 - Branding to Mihon ([@AntsyLich](https://github.com/AntsyLich))
 - Minimum supported Android version to 8 ([@AntsyLich](https://github.com/AntsyLich)) ([`dfb3091`](https://github.com/mihonapp/mihon/commit/dfb3091e380dda3e9bfb64bf5c9a685cf3a03d0e))
 
-<<<<<<< HEAD
-[unreleased]: https://github.com/mihonapp/mihon/compare/v0.21.1...main
-=======
-[unreleased]: https://github.com/mihonapp/mihon/compare/v0.21.2...main
+[unreleased]: https://github.com/mihonapp/mihon/compare/v0.21.3...main
+[v0.21.3]: https://github.com/mihonapp/mihon/compare/v0.21.2...v0.21.3
 [v0.21.2]: https://github.com/mihonapp/mihon/compare/v0.21.1...v0.21.2
->>>>>>> upstream/main
 [v0.21.1]: https://github.com/mihonapp/mihon/compare/v0.21.0...v0.21.1
 [v0.21.0]: https://github.com/mihonapp/mihon/compare/v0.20.4...v0.21.0
 [v0.20.4]: https://github.com/mihonapp/mihon/compare/v0.20.3...v0.20.4

@@ -38,8 +38,8 @@ android {
         // CUSTOM: Changed application ID to avoid collision with official Mihon
         applicationId = "app.mihon.custom"
 
-        versionCode = 38
-        versionName = "0.21.2"
+        versionCode = 39
+        versionName = "0.21.3"
 
         // CUSTOM: Telemetry and updater disabled in custom personal fork
         buildConfigField("boolean", "TELEMETRY_INCLUDED", "false")
@@ -296,7 +296,6 @@ dependencies {
 
     // UI libraries
     implementation(libs.material)
-    implementation(libs.flexibleAdapter)
     implementation(libs.photoView)
     implementation(libs.directionalViewPager) {
         exclude(group = "androidx.viewpager", module = "viewpager")
