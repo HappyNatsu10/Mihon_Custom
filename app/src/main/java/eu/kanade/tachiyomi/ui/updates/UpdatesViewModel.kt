@@ -101,6 +101,8 @@ class UpdatesViewModel(
 
     private val downloadStates = MutableStateFlow(emptyMap<Long, Download.State>())
 
+    private val chapterDownloadStatusCache = java.util.concurrent.ConcurrentHashMap<Long, Download.State>()
+
     // Progress ticks often, so only the download indicators that read it recompose instead of every tick rebuilding
     // the list
     private val downloadProgress = mutableStateMapOf<Long, Int>()
@@ -122,6 +124,11 @@ class UpdatesViewModel(
             downloadManager.progressFlow()
                 .catch { logcat(LogPriority.ERROR, it) }
                 .collect { downloadProgress[it.chapter.id] = it.progress }
+        }
+        viewModelScope.launch {
+            downloadCache.changes
+                .catch { logcat(LogPriority.ERROR, it) }
+                .collect { chapterDownloadStatusCache.clear() }
         }
     }
 
@@ -231,16 +238,25 @@ class UpdatesViewModel(
         dialog,
         combine(hasActiveFilters, itemPreferencesFlow, expandedGroupKeys, ::Triple),
     ) { items, selectedIds, downloads, dialog, (hasActiveFilters, itemPreferences, expandedKeys) ->
-        val mappedItems = items.orEmpty().map { item ->
-            val downloadState = downloads[item.update.chapterId]
-            item.copy(
-                selected = item.update.chapterId in selectedIds,
-                downloadStateProvider = if (downloadState != null) {
-                    { downloadState }
+        val mappedItems = if (selectedIds.isEmpty() && downloads.isEmpty()) {
+            items.orEmpty()
+        } else {
+            items.orEmpty().map { item ->
+                val downloadState = downloads[item.update.chapterId]
+                val isSelected = item.update.chapterId in selectedIds
+                if (downloadState != null || isSelected != item.selected) {
+                    item.copy(
+                        selected = isSelected,
+                        downloadStateProvider = if (downloadState != null) {
+                            { downloadState }
+                        } else {
+                            item.downloadStateProvider
+                        },
+                    )
                 } else {
-                    item.downloadStateProvider
-                },
-            )
+                    item
+                }
+            }
         }
         val uiModels = UpdatesGrouping.groupUpdates(
             items = mappedItems,
@@ -258,7 +274,7 @@ class UpdatesViewModel(
         )
     }
         .flowOn(Dispatchers.Default)
-        .stateIn(viewModelScope + subscriberGate, subscriberGate.whileSubscribed(5.seconds), State())
+        .stateIn(viewModelScope + subscriberGate, subscriberGate.whileSubscribed(20.seconds), State())
 
     private fun List<UpdatesItem>.applyFilters(
         preferences: ItemPreferences,
@@ -290,43 +306,47 @@ class UpdatesViewModel(
         }
     }
 
+    private fun isChapterDownloadedFast(update: UpdatesWithRelations): Boolean {
+        if (downloadCache.getTotalDownloadCount() == 0) return false
+        val cached = chapterDownloadStatusCache[update.chapterId]
+        if (cached != null) return cached == Download.State.DOWNLOADED
+
+        val isDownloaded = if (downloadManager.isMangaDownloaded(update.mangaTitle, update.sourceId)) {
+            downloadManager.isChapterDownloaded(
+                update.chapterName,
+                update.scanlator,
+                update.chapterUrl,
+                update.mangaTitle,
+                update.sourceId,
+            )
+        } else {
+            false
+        }
+        val state = if (isDownloaded) Download.State.DOWNLOADED else Download.State.NOT_DOWNLOADED
+        chapterDownloadStatusCache[update.chapterId] = state
+        return isDownloaded
+    }
+
     private fun List<UpdatesWithRelations>.toUpdateItems(): List<UpdatesItem> {
         val queuedDownloads = downloadManager.getQueuedDownloadsByChapterId()
-        val mangaHasDownloadsCache = mutableMapOf<Pair<Long, String>, Boolean>()
+        val hasAnyTotalDownloads = downloadCache.getTotalDownloadCount() > 0
 
-        return this
-            .map { update ->
-                val activeDownload = queuedDownloads[update.chapterId]
-                val downloaded = if (activeDownload != null) {
-                    false
-                } else {
-                    val key = Pair(update.sourceId, update.mangaTitle)
-                    val hasAnyDownloads = mangaHasDownloadsCache.getOrPut(key) {
-                        downloadManager.isMangaDownloaded(update.mangaTitle, update.sourceId)
-                    }
-                    if (hasAnyDownloads) {
-                        downloadManager.isChapterDownloaded(
-                            update.chapterName,
-                            update.scanlator,
-                            update.chapterUrl,
-                            update.mangaTitle,
-                            update.sourceId,
-                        )
-                    } else {
-                        false
-                    }
-                }
-                val downloadState = when {
-                    activeDownload != null -> activeDownload.status
-                    downloaded -> Download.State.DOWNLOADED
+        return this.map { update ->
+            val downloadStateProvider: () -> Download.State = {
+                val active = queuedDownloads[update.chapterId]
+                when {
+                    active != null -> active.status
+                    !hasAnyTotalDownloads -> Download.State.NOT_DOWNLOADED
+                    isChapterDownloadedFast(update) -> Download.State.DOWNLOADED
                     else -> Download.State.NOT_DOWNLOADED
                 }
-                UpdatesItem(
-                    update = update,
-                    downloadStateProvider = { downloadState },
-                    downloadProgressProvider = { downloadProgress[update.chapterId] ?: 0 },
-                )
             }
+            UpdatesItem(
+                update = update,
+                downloadStateProvider = downloadStateProvider,
+                downloadProgressProvider = { downloadProgress[update.chapterId] ?: 0 },
+            )
+        }
     }
 
     suspend fun updateLibrary(): Boolean {

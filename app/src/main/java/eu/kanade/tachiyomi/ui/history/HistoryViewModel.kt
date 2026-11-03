@@ -103,7 +103,7 @@ class HistoryViewModel(
     ) { searchQuery, history, dialog ->
         State(searchQuery = searchQuery, list = history, dialog = dialog)
     }
-        .stateIn(viewModelScope + subscriberGate, subscriberGate.whileSubscribed(5.seconds), State())
+        .stateIn(viewModelScope + subscriberGate, subscriberGate.whileSubscribed(20.seconds), State())
 
     private fun List<HistoryWithRelations>.toHistoryUiModels(): List<HistoryUiModel> {
         return map { HistoryUiModel.Item(it) }

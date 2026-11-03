@@ -204,7 +204,7 @@ class LibraryViewModel(
             groupedFavorites = library?.groupedFavorites.orEmpty(),
         )
     }
-        .stateIn(viewModelScope + subscriberGate, subscriberGate.whileSubscribed(5.seconds), State())
+        .stateIn(viewModelScope + subscriberGate, subscriberGate.whileSubscribed(20.seconds), State())
 
     private data class DisplayPreferences(
         val showCategoryTabs: Boolean,

@@ -248,7 +248,7 @@ private fun UpdatesGroupUiItem(
                     )
                 }
                 Text(
-                    text = UpdatesGrouping.formatGroupSubtitle(group.items),
+                    text = group.subtitle,
                     maxLines = 1,
                     style = MaterialTheme.typography.bodySmall,
                     color = LocalContentColor.current.copy(alpha = textAlpha),

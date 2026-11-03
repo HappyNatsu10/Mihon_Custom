@@ -264,15 +264,18 @@ sealed interface UpdatesUiModel {
         val date: LocalDate,
         val items: List<UpdatesItem>,
         val expanded: Boolean,
+        val subtitle: String = eu.kanade.tachiyomi.ui.updates.UpdatesGrouping.formatGroupSubtitle(items),
     ) : UpdatesUiModel {
         val key: String get() = "group:$mangaId:$date"
-        val count: Int get() = items.size
-        val hasUnread: Boolean get() = items.any { !it.update.read }
+        val count: Int = items.size
+        val hasUnread: Boolean = items.any { !it.update.read }
         val allSelected: Boolean get() = items.all { it.selected }
         val partiallySelected: Boolean get() = !allSelected && items.any { it.selected }
-        val downloadedCount: Int get() = items.count {
-            it.downloadStateProvider() ==
-                eu.kanade.tachiyomi.data.download.model.Download.State.DOWNLOADED
+        val downloadedCount: Int by lazy {
+            items.count {
+                it.downloadStateProvider() ==
+                    eu.kanade.tachiyomi.data.download.model.Download.State.DOWNLOADED
+            }
         }
         val representativeItem: UpdatesItem get() = items.first()
     }
