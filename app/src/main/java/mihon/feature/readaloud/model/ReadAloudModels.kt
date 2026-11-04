@@ -58,7 +58,26 @@ data class ElevenLabsVoice(
     val name: String,
     val category: String = "",
     val previewUrl: String? = null,
-)
+    val availableForTiers: List<String> = emptyList(),
+) {
+    val isPremade: Boolean get() = category.equals("premade", ignoreCase = true)
+    val isCloned: Boolean get() = category.equals("cloned", ignoreCase = true) ||
+        category.equals("generated", ignoreCase = true)
+    val isLibrary: Boolean get() = category.equals("professional", ignoreCase = true) ||
+        category.equals("shared", ignoreCase = true) ||
+        category.equals("community", ignoreCase = true)
+
+    fun isAllowedForTier(tier: String): Boolean {
+        if (tier.isBlank() || tier.equals("enterprise", ignoreCase = true)) return true
+        if (tier.equals("free", ignoreCase = true)) {
+            return isPremade || isCloned
+        }
+        if (availableForTiers.isNotEmpty()) {
+            return availableForTiers.any { it.equals(tier, ignoreCase = true) }
+        }
+        return true
+    }
+}
 
 enum class ElevenLabsModel(
     val id: String,

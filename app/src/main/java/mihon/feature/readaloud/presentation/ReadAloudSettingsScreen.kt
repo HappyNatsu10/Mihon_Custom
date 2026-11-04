@@ -1,15 +1,19 @@
 package mihon.feature.readaloud.presentation
 
 import android.widget.Toast
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -100,6 +104,7 @@ class ReadAloudSettingsScreen : Screen() {
         var isFetchingVoices by remember { mutableStateOf(false) }
         var isFetchingSubscription by remember { mutableStateOf(false) }
         var isTestingVoice by remember { mutableStateOf(false) }
+        var voicePickerTarget by remember { mutableStateOf<String?>(null) }
 
         LaunchedEffect(elevenLabsApiKey) {
             val key = elevenLabsApiKey.trim().trim('"', '\'')
@@ -399,28 +404,135 @@ class ReadAloudSettingsScreen : Screen() {
                                     }
                                 }
 
-                                OutlinedTextField(
-                                    value = narratorVoiceId,
-                                    onValueChange = { prefs.narratorVoiceId.set(it) },
-                                    label = { Text("Narrator Voice ID") },
+                                // Guidelines for Free Tier
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = MaterialTheme.colorScheme.surfaceColorAtElevation(2.dp),
                                     modifier = Modifier.fillMaxWidth(),
-                                    singleLine = true,
-                                )
+                                ) {
+                                    Column(modifier = Modifier.padding(10.dp)) {
+                                        Text(
+                                            text = "ElevenLabs Free Tier Voice Guidelines",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary,
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = "Free accounts can use Premade voices (Rachel, Domi, Adam, etc.) " +
+                                                "via the API. Community voices from the Voice Library cannot be " +
+                                                "called via the API on Free accounts per ElevenLabs policy.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
 
-                                if (multipleVoices) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        text = "Voice Selection",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                    )
+                                    OutlinedButton(
+                                        onClick = {
+                                            prefs.narratorVoiceId.set(ElevenLabsClient.DEFAULT_NARRATOR_VOICE_ID)
+                                            prefs.secondaryVoiceId.set(ElevenLabsClient.DEFAULT_SECONDARY_VOICE_ID)
+                                            context.toast("Reset to default free voices (Rachel & Domi)")
+                                        },
+                                    ) {
+                                        Text("Reset Defaults")
+                                    }
+                                }
+
+                                // Narrator Voice Section
+                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    val narratorName = ElevenLabsClient.PRESET_FREE_VOICES
+                                        .find { it.id == narratorVoiceId }?.name
+                                        ?: availableVoices.find { it.id == narratorVoiceId }?.name
+                                        ?: "Custom"
+                                    Text(
+                                        text = "Narrator Voice: $narratorName",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                    )
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    ) {
+                                        listOf("Rachel", "Adam", "Antoni").forEach { name ->
+                                            val preset = ElevenLabsClient.PRESET_FREE_VOICES.first { it.name == name }
+                                            FilterChip(
+                                                selected = narratorVoiceId == preset.id,
+                                                onClick = { prefs.narratorVoiceId.set(preset.id) },
+                                                label = { Text(name) },
+                                            )
+                                        }
+                                        FilterChip(
+                                            selected = false,
+                                            onClick = { voicePickerTarget = "narrator" },
+                                            label = { Text("Browse...") },
+                                        )
+                                    }
                                     OutlinedTextField(
-                                        value = secondaryVoiceId,
-                                        onValueChange = { prefs.secondaryVoiceId.set(it) },
-                                        label = { Text("Dialogue / Secondary Voice ID") },
+                                        value = narratorVoiceId,
+                                        onValueChange = { prefs.narratorVoiceId.set(it) },
+                                        label = { Text("Narrator Voice ID") },
                                         modifier = Modifier.fillMaxWidth(),
                                         singleLine = true,
                                     )
                                 }
 
+                                // Secondary / Dialogue Voice Section
+                                if (multipleVoices) {
+                                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        val secondaryName = ElevenLabsClient.PRESET_FREE_VOICES
+                                            .find { it.id == secondaryVoiceId }?.name
+                                            ?: availableVoices.find { it.id == secondaryVoiceId }?.name
+                                            ?: "Custom"
+                                        Text(
+                                            text = "Dialogue / Secondary Voice: $secondaryName",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.SemiBold,
+                                        )
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        ) {
+                                            listOf("Domi", "Adam", "Josh").forEach { name ->
+                                                val preset = ElevenLabsClient.PRESET_FREE_VOICES.first {
+                                                    it.name == name
+                                                }
+                                                FilterChip(
+                                                    selected = secondaryVoiceId == preset.id,
+                                                    onClick = { prefs.secondaryVoiceId.set(preset.id) },
+                                                    label = { Text(name) },
+                                                )
+                                            }
+                                            FilterChip(
+                                                selected = false,
+                                                onClick = { voicePickerTarget = "secondary" },
+                                                label = { Text("Browse...") },
+                                            )
+                                        }
+                                        OutlinedTextField(
+                                            value = secondaryVoiceId,
+                                            onValueChange = { prefs.secondaryVoiceId.set(it) },
+                                            label = { Text("Dialogue / Secondary Voice ID") },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            singleLine = true,
+                                        )
+                                    }
+                                }
+
                                 if (availableVoices.isNotEmpty()) {
                                     val count = availableVoices.size
                                     Text(
-                                        text = "$count voices available on your account",
+                                        text = "$count voices fetched from your ElevenLabs account",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.primary,
                                     )
@@ -527,6 +639,148 @@ class ReadAloudSettingsScreen : Screen() {
                     }
                 }
             }
+        }
+
+        if (voicePickerTarget != null) {
+            val isNarrator = voicePickerTarget == "narrator"
+            val titleText = if (isNarrator) "Select Narrator Voice" else "Select Dialogue Voice"
+            AlertDialog(
+                onDismissRequest = { voicePickerTarget = null },
+                title = { Text(titleText, style = MaterialTheme.typography.titleMedium) },
+                text = {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Text(
+                            text = "Verified Free-Tier Preset Voices",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        ElevenLabsClient.PRESET_FREE_VOICES.forEach { preset ->
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.surfaceColorAtElevation(1.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        if (isNarrator) {
+                                            prefs.narratorVoiceId.set(preset.id)
+                                        } else {
+                                            prefs.secondaryVoiceId.set(preset.id)
+                                        }
+                                        voicePickerTarget = null
+                                    },
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Text(
+                                            text = preset.name,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Bold,
+                                        )
+                                        Text(
+                                            text = preset.gender,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                    Text(
+                                        text = preset.description,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+
+                        if (availableVoices.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "Voices From Your Account (${availableVoices.size})",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                            availableVoices.forEach { voice ->
+                                val isFree = subscription?.isFreeTier ?: true
+                                val isRestrictedOnFree = isFree && voice.isLibrary
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = MaterialTheme.colorScheme.surfaceColorAtElevation(1.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            if (isRestrictedOnFree) {
+                                                context.toast(
+                                                    "ElevenLabs blocks Community Library voices on Free Tier API. " +
+                                                        "Please select a Premade voice.",
+                                                    Toast.LENGTH_LONG,
+                                                )
+                                            } else {
+                                                if (isNarrator) {
+                                                    prefs.narratorVoiceId.set(voice.id)
+                                                } else {
+                                                    prefs.secondaryVoiceId.set(voice.id)
+                                                }
+                                                voicePickerTarget = null
+                                            }
+                                        },
+                                ) {
+                                    Column(modifier = Modifier.padding(10.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            Text(
+                                                text = voice.name,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.Bold,
+                                            )
+                                            val badgeText = when {
+                                                voice.isPremade -> "Premade"
+                                                voice.isCloned -> "Cloned"
+                                                isRestrictedOnFree -> "Paid Only"
+                                                else -> voice.category.ifBlank { "Voice" }
+                                            }
+                                            Surface(
+                                                shape = RoundedCornerShape(4.dp),
+                                                color = if (isRestrictedOnFree) {
+                                                    MaterialTheme.colorScheme.errorContainer
+                                                } else {
+                                                    MaterialTheme.colorScheme.primaryContainer
+                                                },
+                                            ) {
+                                                Text(
+                                                    text = badgeText,
+                                                    modifier = Modifier.padding(
+                                                        horizontal = 6.dp,
+                                                        vertical = 2.dp,
+                                                    ),
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(onClick = { voicePickerTarget = null }) {
+                        Text("Cancel")
+                    }
+                },
+            )
         }
     }
 

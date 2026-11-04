@@ -224,4 +224,69 @@ class ElevenLabsClientTest {
         outputFile.exists() shouldBe true
         outputFile.readBytes() shouldBe dummyAudio
     }
+
+    @Test
+    fun `synthesize rescues secondary voice with narrator voice on library voice restriction`() = runTest {
+        val requests = mutableListOf<String>()
+        val dummyAudio = byteArrayOf(0x01, 0x02, 0x03)
+
+        val interceptor = Interceptor { chain ->
+            val req = chain.request()
+            requests.add(req.url.encodedPath)
+
+            if (req.url.encodedPath.contains("library_voice")) {
+                val errorJson = """
+                    {
+                      "detail": {
+                        "status": "payment_required",
+                        "message": "Free users cannot use library voices via the API."
+                      }
+                    }
+                """.trimIndent()
+                Response.Builder()
+                    .request(req)
+                    .protocol(Protocol.HTTP_1_1)
+                    .code(402)
+                    .message("Payment Required")
+                    .body(errorJson.toResponseBody("application/json".toMediaType()))
+                    .build()
+            } else {
+                Response.Builder()
+                    .request(req)
+                    .protocol(Protocol.HTTP_1_1)
+                    .code(200)
+                    .message("OK")
+                    .body(dummyAudio.toResponseBody("audio/mpeg".toMediaType()))
+                    .build()
+            }
+        }
+
+        val okHttpClient = OkHttpClient.Builder().addInterceptor(interceptor).build()
+        val client = ElevenLabsClient(
+            client = okHttpClient,
+            apiKeyProvider = { "test-key" },
+            baseUrl = "https://mock.elevenlabs.io",
+        )
+
+        val turns = listOf(
+            Turn("Speaker 1", "Hey there!"),
+        )
+
+        val outputFile = File(tempDir, "rescued.mp3")
+        client.synthesize(
+            turns = turns,
+            narratorVoiceId = "safe_narrator",
+            secondaryVoiceId = "library_voice",
+            modelId = "eleven_turbo_v2_5",
+            multipleVoices = true,
+            outputFile = outputFile,
+        )
+
+        requests.size shouldBe 2
+        requests[0] shouldBe "/v1/text-to-speech/library_voice"
+        requests[1] shouldBe "/v1/text-to-speech/safe_narrator"
+
+        outputFile.exists() shouldBe true
+        outputFile.readBytes() shouldBe dummyAudio
+    }
 }

@@ -37,6 +37,22 @@ class ElevenLabsClient(
         const val DEFAULT_NARRATOR_VOICE_ID = "21m00Tcm4TlvDq8ikWAM" // Rachel
         const val DEFAULT_SECONDARY_VOICE_ID = "AZnzlk1XvdvUeBnXmlld" // Domi
         const val DEFAULT_MODEL_ID = "eleven_turbo_v2_5"
+
+        data class PresetVoice(
+            val id: String,
+            val name: String,
+            val gender: String,
+            val description: String,
+        )
+
+        val PRESET_FREE_VOICES = listOf(
+            PresetVoice("21m00Tcm4TlvDq8ikWAM", "Rachel", "Female", "Calm, expressive narration"),
+            PresetVoice("pNInz6obpgDQGcFmaJgB", "Adam", "Male", "Deep, smooth narrative"),
+            PresetVoice("AZnzlk1XvdvUeBnXmlld", "Domi", "Female", "Energetic, dynamic dialogue"),
+            PresetVoice("ErXwobaYiN019PkySvjV", "Antoni", "Male", "Well-rounded, natural narration"),
+            PresetVoice("EXAVITQu4vr4xnSDxMaL", "Bella", "Female", "Soft, gentle narration"),
+            PresetVoice("TxGEqnHWrfWFTfGW9XjX", "Josh", "Male", "Young, deep casual"),
+        )
     }
 
     private fun getApiKey(): String {
@@ -74,6 +90,12 @@ class ElevenLabsClient(
                 if (isDialogue) {
                     val fallbackHint = "Requires a paid plan. Switched to standard Turbo v2.5."
                     "ElevenLabs v3/Dialogue is restricted on your tier: ${detailMsg.ifBlank { fallbackHint }}"
+                } else if (detailMsg.contains("library voice", ignoreCase = true) ||
+                    detailMsg.contains("free users cannot use", ignoreCase = true)
+                ) {
+                    "ElevenLabs Free Tier restriction: Free users cannot use community Voice Library voices " +
+                        "via the API. Please switch to a Premade voice (Rachel, Adam, Domi) in Settings, " +
+                        "or upgrade your plan."
                 } else if (detailMsg.isNotBlank()) {
                     "ElevenLabs quota/tier restriction: $detailMsg"
                 } else {
@@ -360,13 +382,42 @@ class ElevenLabsClient(
                 narratorVoiceId.ifBlank { DEFAULT_NARRATOR_VOICE_ID }
             }
             val fullText = turns.joinToString("\n\n") { it.text }
-            return@withContext textToSpeech(
-                text = fullText,
-                voiceId = singleVoiceId,
-                modelId = effectiveModel,
-                outputFile = outputFile,
-                append = false,
-            )
+            try {
+                return@withContext textToSpeech(
+                    text = fullText,
+                    voiceId = singleVoiceId,
+                    modelId = effectiveModel,
+                    outputFile = outputFile,
+                    append = false,
+                )
+            } catch (e: ElevenLabsException) {
+                val isLibraryRestriction = e.statusCode == 402 && (
+                    e.message?.contains("library voice", ignoreCase = true) == true ||
+                        e.message?.contains("quota/tier", ignoreCase = true) == true ||
+                        e.message?.contains("tier restriction", ignoreCase = true) == true
+                    )
+                if (isLibraryRestriction) {
+                    val safeNarrator = narratorVoiceId.ifBlank { DEFAULT_NARRATOR_VOICE_ID }
+                    val fallbackVoice = if (singleVoiceId != safeNarrator) {
+                        safeNarrator
+                    } else {
+                        DEFAULT_NARRATOR_VOICE_ID
+                    }
+                    if (singleVoiceId != fallbackVoice) {
+                        logcat(LogPriority.WARN) {
+                            "Voice $singleVoiceId hit ElevenLabs tier/library restriction. Rescuing with $fallbackVoice"
+                        }
+                        return@withContext textToSpeech(
+                            text = fullText,
+                            voiceId = fallbackVoice,
+                            modelId = effectiveModel,
+                            outputFile = outputFile,
+                            append = false,
+                        )
+                    }
+                }
+                throw e
+            }
         }
 
         // Group consecutive turns by the same voice to minimize API requests
@@ -391,13 +442,43 @@ class ElevenLabsClient(
         }
 
         for (batch in batches) {
-            textToSpeech(
-                text = batch.text,
-                voiceId = batch.voiceId,
-                modelId = effectiveModel,
-                outputFile = outputFile,
-                append = true,
-            )
+            try {
+                textToSpeech(
+                    text = batch.text,
+                    voiceId = batch.voiceId,
+                    modelId = effectiveModel,
+                    outputFile = outputFile,
+                    append = true,
+                )
+            } catch (e: ElevenLabsException) {
+                val isLibraryRestriction = e.statusCode == 402 && (
+                    e.message?.contains("library voice", ignoreCase = true) == true ||
+                        e.message?.contains("quota/tier", ignoreCase = true) == true ||
+                        e.message?.contains("tier restriction", ignoreCase = true) == true
+                    )
+                if (isLibraryRestriction) {
+                    val safeNarrator = narratorVoiceId.ifBlank { DEFAULT_NARRATOR_VOICE_ID }
+                    val fallbackVoice = if (batch.voiceId != safeNarrator) {
+                        safeNarrator
+                    } else {
+                        DEFAULT_NARRATOR_VOICE_ID
+                    }
+                    if (batch.voiceId != fallbackVoice) {
+                        logcat(LogPriority.WARN) {
+                            "Voice ${batch.voiceId} hit ElevenLabs tier/library restriction. Rescuing with $fallbackVoice"
+                        }
+                        textToSpeech(
+                            text = batch.text,
+                            voiceId = fallbackVoice,
+                            modelId = effectiveModel,
+                            outputFile = outputFile,
+                            append = true,
+                        )
+                        continue
+                    }
+                }
+                throw e
+            }
         }
 
         return@withContext outputFile
@@ -431,12 +512,20 @@ class ElevenLabsClient(
                     val name = obj["name"]?.jsonPrimitive?.content ?: ""
                     val category = obj["category"]?.jsonPrimitive?.content ?: ""
                     val previewUrl = obj["preview_url"]?.jsonPrimitive?.content
+                    val availableForTiers = obj["available_for_tiers"]?.jsonArray?.mapNotNull {
+                        try {
+                            it.jsonPrimitive.content
+                        } catch (_: Exception) {
+                            null
+                        }
+                    } ?: emptyList()
                     voices.add(
                         ElevenLabsVoice(
                             id = voiceId,
                             name = name,
                             category = category,
                             previewUrl = previewUrl,
+                            availableForTiers = availableForTiers,
                         ),
                     )
                 }
