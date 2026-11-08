@@ -43,6 +43,15 @@ private class DelegateLastPathClassLoader(
             } catch (_: ClassNotFoundException) {}
         }
 
+        // CUSTOM: Ensure source-api classes (including tagfilter contract) are resolved from parent first,
+        // so that if an extension bundles a copy of the contract, the app's canonical version takes precedence
+        // and type checks (e.g. source is TagFilterSource) succeed across classloaders.
+        if (name?.startsWith("eu.kanade.tachiyomi.source.") == true) {
+            try {
+                return parent.loadClass(name)
+            } catch (_: ClassNotFoundException) {}
+        }
+
         val fromSuper = try {
             return findClass(name)
         } catch (e: ClassNotFoundException) {

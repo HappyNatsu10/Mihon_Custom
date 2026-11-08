@@ -34,6 +34,7 @@ import eu.kanade.presentation.manga.components.DeleteChaptersDialog
 import eu.kanade.presentation.manga.components.MangaCoverDialog
 import eu.kanade.presentation.manga.components.ScanlatorFilterDialog
 import eu.kanade.presentation.manga.components.SetIntervalDialog
+import eu.kanade.presentation.manga.components.TagFilterDialog
 import eu.kanade.presentation.util.AssistContentScreen
 import eu.kanade.presentation.util.Screen
 import eu.kanade.presentation.util.isTabletUi
@@ -169,6 +170,8 @@ class MangaScreen(
             onChapterSelected = viewModel::toggleSelection,
             onAllChapterSelected = viewModel::toggleAllSelection,
             onInvertSelection = viewModel::invertSelection,
+            // CUSTOM: Tag filter
+            onClearTagFilter = viewModel::clearTagFilter,
         )
 
         var showScanlatorsDialog by remember { mutableStateOf(false) }
@@ -236,7 +239,36 @@ class MangaScreen(
                 onResetToDefault = viewModel::resetToDefaultSettings,
                 scanlatorFilterActive = successState.scanlatorFilterActive,
                 onScanlatorFilterClicked = { showScanlatorsDialog = true },
+                // CUSTOM: Tag filter
+                tagFilterVisible = successState.isTagFilterSupported,
+                tagFilterActive = successState.tagFilterActive,
+                tagFilterSelectedCount = successState.tagFilter?.tags?.size ?: 0,
+                onTagFilterClicked = {
+                    onDismissRequest()
+                    viewModel.openTagFilterDialog()
+                },
             )
+            // CUSTOM: Tag filter dialog
+            MangaViewModel.Dialog.TagFilterDialog -> {
+                TagFilterDialog(
+                    scopes = successState.tagFilterScopes,
+                    selectedScopeId = viewModel.tagFilterDialogScopeId,
+                    tags = viewModel.tagFilterDialogTags,
+                    isLoading = viewModel.isTagFilterDialogLoading,
+                    errorReason = viewModel.tagFilterDialogError,
+                    selectedTags = viewModel.tagFilterDialogSelectedTags,
+                    matchMode = viewModel.tagFilterDialogMatchMode,
+                    onScopeSelected = viewModel::selectTagFilterScope,
+                    onTagToggled = viewModel::toggleTagFilterTag,
+                    onRemoveTag = viewModel::removeTagFilterTag,
+                    onClearAllTags = viewModel::clearAllTagFilterDialogTags,
+                    onMatchModeChanged = viewModel::setTagFilterMatchMode,
+                    onRefreshTags = viewModel::refreshTagFilterTags,
+                    onRetry = viewModel::refreshTagFilterTags,
+                    onDismissRequest = onDismissRequest,
+                    onApply = viewModel::applyTagFilter,
+                )
+            }
             MangaViewModel.Dialog.TrackSheet -> {
                 NavigatorAdaptiveSheet(
                     screen = TrackInfoDialogHomeScreen(

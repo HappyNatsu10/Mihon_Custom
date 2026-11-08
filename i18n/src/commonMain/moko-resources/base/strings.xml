@@ -1168,4 +1168,22 @@
     <string name="action_tts">Text-to-speech</string>
     <string name="action_tts_stop">Stop speech</string>
     <string name="action_tts_speaking">Speaking page text…</string>
+
+    <!-- CUSTOM: Tag Filter -->
+    <string name="tag_filter_title">Tags</string>
+    <string name="tag_filter_summary">%1$d selected</string>
+    <string name="tag_filter_search_hint">Search tags…</string>
+    <string name="tag_filter_sort_count">Count</string>
+    <string name="tag_filter_sort_alpha">A–Z</string>
+    <string name="tag_filter_match_all">All of these</string>
+    <string name="tag_filter_match_any">Any of these</string>
+    <string name="tag_filter_clear">Clear</string>
+    <string name="tag_filter_empty">No tags for this entry</string>
+    <string name="tag_filter_error_login">Login required to view tags</string>
+    <string name="tag_filter_error_rate_limit">Rate limited by source. Please try again later.</string>
+    <string name="tag_filter_error_not_supported">Tag filtering not supported for this entry</string>
+    <string name="tag_filter_error_generic">Failed to load tags</string>
+    <string name="tag_filter_empty_matching_chapters">No chapters match the selected tags</string>
+    <string name="tag_filter_clear_filter">Clear tag filter</string>
+    <string name="tag_filter_unsynced_notice">%1$d matching works are not in your list yet. Refresh to load them.</string>
 </resources>

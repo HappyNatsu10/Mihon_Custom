@@ -48,6 +48,7 @@ import androidx.compose.ui.util.fastMap
 import eu.kanade.presentation.components.relativeDateText
 import eu.kanade.presentation.manga.components.ChapterDownloadAction
 import eu.kanade.presentation.manga.components.ChapterHeader
+import eu.kanade.presentation.manga.components.EmptyTagFilterResult
 import eu.kanade.presentation.manga.components.ExpandableMangaDescription
 import eu.kanade.presentation.manga.components.MangaActionRow
 import eu.kanade.presentation.manga.components.MangaBottomActionMenu
@@ -55,6 +56,7 @@ import eu.kanade.presentation.manga.components.MangaChapterListItem
 import eu.kanade.presentation.manga.components.MangaInfoBox
 import eu.kanade.presentation.manga.components.MangaToolbar
 import eu.kanade.presentation.manga.components.MissingChapterCountListItem
+import eu.kanade.presentation.manga.components.UnsyncedTagWorksBanner
 import eu.kanade.presentation.util.formatChapterNumber
 import eu.kanade.tachiyomi.data.download.model.Download
 import eu.kanade.tachiyomi.source.getNameForMangaInfo
@@ -126,6 +128,8 @@ fun MangaScreen(
     onChapterSelected: (ChapterList.Item, Boolean, Boolean) -> Unit,
     onAllChapterSelected: (Boolean) -> Unit,
     onInvertSelection: () -> Unit,
+    // CUSTOM: Tag filter
+    onClearTagFilter: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val onCopyTagToClipboard: (tag: String) -> Unit = {
@@ -170,6 +174,7 @@ fun MangaScreen(
             onChapterSelected = onChapterSelected,
             onAllChapterSelected = onAllChapterSelected,
             onInvertSelection = onInvertSelection,
+            onClearTagFilter = onClearTagFilter,
         )
     } else {
         MangaScreenLargeImpl(
@@ -207,6 +212,7 @@ fun MangaScreen(
             onChapterSelected = onChapterSelected,
             onAllChapterSelected = onAllChapterSelected,
             onInvertSelection = onInvertSelection,
+            onClearTagFilter = onClearTagFilter,
         )
     }
 }
@@ -260,6 +266,8 @@ private fun MangaScreenSmallImpl(
     onChapterSelected: (ChapterList.Item, Boolean, Boolean) -> Unit,
     onAllChapterSelected: (Boolean) -> Unit,
     onInvertSelection: () -> Unit,
+    // CUSTOM: Tag filter
+    onClearTagFilter: () -> Unit = {},
 ) {
     val chapterListState = rememberLazyListState()
 
@@ -425,6 +433,31 @@ private fun MangaScreenSmallImpl(
                         )
                     }
 
+                    // CUSTOM: Unsynced tag works banner
+                    if (state.unsyncedTagWorksCount > 0) {
+                        item(
+                            key = "unsynced_tag_works",
+                            contentType = "unsynced_tag_works",
+                        ) {
+                            UnsyncedTagWorksBanner(
+                                count = state.unsyncedTagWorksCount,
+                                onRefresh = onRefresh,
+                            )
+                        }
+                    }
+
+                    // CUSTOM: Empty tag filter state
+                    if (listItem.isEmpty() && state.tagFilterActive) {
+                        item(
+                            key = "empty_tag_filter",
+                            contentType = "empty_tag_filter",
+                        ) {
+                            EmptyTagFilterResult(
+                                onClearTagFilter = onClearTagFilter,
+                            )
+                        }
+                    }
+
                     sharedChapterItems(
                         manga = state.manga,
                         chapters = listItem,
@@ -492,6 +525,8 @@ fun MangaScreenLargeImpl(
     onChapterSelected: (ChapterList.Item, Boolean, Boolean) -> Unit,
     onAllChapterSelected: (Boolean) -> Unit,
     onInvertSelection: () -> Unit,
+    // CUSTOM: Tag filter
+    onClearTagFilter: () -> Unit = {},
 ) {
     val layoutDirection = LocalLayoutDirection.current
     val density = LocalDensity.current
@@ -648,6 +683,31 @@ fun MangaScreenLargeImpl(
                                     missingChapterCount = state.missingChapterCount,
                                     onClick = onFilterButtonClicked,
                                 )
+                            }
+
+                            // CUSTOM: Unsynced tag works banner
+                            if (state.unsyncedTagWorksCount > 0) {
+                                item(
+                                    key = "unsynced_tag_works",
+                                    contentType = "unsynced_tag_works",
+                                ) {
+                                    UnsyncedTagWorksBanner(
+                                        count = state.unsyncedTagWorksCount,
+                                        onRefresh = onRefresh,
+                                    )
+                                }
+                            }
+
+                            // CUSTOM: Empty tag filter state
+                            if (listItem.isEmpty() && state.tagFilterActive) {
+                                item(
+                                    key = "empty_tag_filter",
+                                    contentType = "empty_tag_filter",
+                                ) {
+                                    EmptyTagFilterResult(
+                                        onClearTagFilter = onClearTagFilter,
+                                    )
+                                }
                             }
 
                             sharedChapterItems(

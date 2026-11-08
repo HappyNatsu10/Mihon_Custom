@@ -137,6 +137,11 @@ interface AppGraph : ViewModelGraph {
     // CUSTOM: ReadAloud - ElevenLabs & OCR TTS Pipeline
     val readAloudPipeline: mihon.feature.readaloud.service.ReadAloudPipeline
 
+    // CUSTOM: Tag Filter
+    val tagFilterCache: mihon.feature.tagfilter.cache.TagFilterCache
+    val getMangaTagFilter: eu.kanade.domain.manga.interactor.GetMangaTagFilter
+    val setMangaTagFilter: eu.kanade.domain.manga.interactor.SetMangaTagFilter
+
     @DependencyGraph.Factory
     fun interface Factory {
         fun create(@Provides context: Context, @Provides @IsDebugBuild isDebugBuild: Boolean): AppGraph

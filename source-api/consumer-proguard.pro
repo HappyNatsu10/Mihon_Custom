@@ -20,6 +20,10 @@
 -keep class eu.kanade.tachiyomi.source.online.HttpSource { public protected *; }
 -keep class eu.kanade.tachiyomi.source.online.ParsedHttpSource { public protected *; }
 
+# Tag filter source API contract v1
+-keep class eu.kanade.tachiyomi.source.tagfilter.** { public protected *; }
+-keep class eu.kanade.tachiyomi.source.tagfilter.TagFilterSource$DefaultImpls { public protected *; }
+
 # Final classes and top-level functions extensions only call into
 -keep,allowoptimization class eu.kanade.tachiyomi.AppInfo { public protected *; }
 -keep,allowoptimization class eu.kanade.tachiyomi.network.HttpException { public protected *; }

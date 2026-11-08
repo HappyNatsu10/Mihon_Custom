@@ -7,6 +7,8 @@ import androidx.compose.material3.SnackbarResult
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.util.fastAny
 import androidx.compose.ui.util.fastFilter
 import androidx.compose.ui.util.fastMap
@@ -25,10 +27,13 @@ import eu.kanade.core.util.insertSeparators
 import eu.kanade.domain.chapter.interactor.GetAvailableScanlators
 import eu.kanade.domain.chapter.interactor.SetReadStatus
 import eu.kanade.domain.manga.interactor.GetExcludedScanlators
+import eu.kanade.domain.manga.interactor.GetMangaTagFilter
 import eu.kanade.domain.manga.interactor.SetExcludedScanlators
+import eu.kanade.domain.manga.interactor.SetMangaTagFilter
 import eu.kanade.domain.manga.interactor.UpdateManga
 import eu.kanade.domain.manga.model.chaptersFiltered
 import eu.kanade.domain.manga.model.downloadedFilter
+import eu.kanade.domain.manga.model.toSManga
 import eu.kanade.domain.track.interactor.AddTracks
 import eu.kanade.domain.track.interactor.RefreshTracks
 import eu.kanade.domain.track.interactor.TrackChapter
@@ -44,6 +49,10 @@ import eu.kanade.tachiyomi.data.download.model.Download
 import eu.kanade.tachiyomi.data.track.EnhancedTracker
 import eu.kanade.tachiyomi.data.track.TrackerManager
 import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.source.tagfilter.SourceTag
+import eu.kanade.tachiyomi.source.tagfilter.TagFilterSource
+import eu.kanade.tachiyomi.source.tagfilter.TagLookupException
+import eu.kanade.tachiyomi.source.tagfilter.TagScope
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.util.chapter.getNextUnread
 import eu.kanade.tachiyomi.util.removeCovers
@@ -75,6 +84,8 @@ import logcat.LogPriority
 import mihon.core.metro.AppCoroutineScope
 import mihon.domain.chapter.interactor.FilterChaptersForDownload
 import mihon.domain.source.interactor.UpdateMangaFromRemote
+import mihon.feature.tagfilter.domain.TagFilterLoader
+import mihon.feature.tagfilter.domain.TagFilterLogic
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.preference.CheckboxState
 import tachiyomi.core.common.preference.TriState
@@ -98,7 +109,9 @@ import tachiyomi.domain.manga.interactor.GetDuplicateLibraryManga
 import tachiyomi.domain.manga.interactor.GetMangaWithChapters
 import tachiyomi.domain.manga.interactor.SetMangaChapterFlags
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.manga.model.MangaTagFilter
 import tachiyomi.domain.manga.model.MangaWithChapterCount
+import tachiyomi.domain.manga.model.TagMatchMode
 import tachiyomi.domain.manga.model.applyFilter
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.track.interactor.GetTracks
@@ -139,6 +152,10 @@ class MangaViewModel(
     private val sourceManager: SourceManager,
     private val refreshTracks: RefreshTracks,
     private val coverCache: CoverCache,
+    // CUSTOM: Tag filter
+    private val getMangaTagFilter: GetMangaTagFilter,
+    private val setMangaTagFilter: SetMangaTagFilter,
+    private val tagFilterLoader: TagFilterLoader,
 ) : ViewModel() {
 
     private val subscriberGate = SubscriberGate()
@@ -249,19 +266,109 @@ class MangaViewModel(
         .distinctUntilChanged()
         .onStart { emit(0 to false) }
 
+    // CUSTOM: Tag filter state flows
+    var tagFilterDialogScopeId by mutableStateOf<String?>(null)
+        private set
+    var tagFilterDialogTags by mutableStateOf<List<SourceTag>>(emptyList())
+        private set
+    var isTagFilterDialogLoading by mutableStateOf(false)
+        private set
+    var tagFilterDialogError by mutableStateOf<TagLookupException.Reason?>(null)
+        private set
+    var tagFilterDialogSelectedTags by mutableStateOf<Set<String>>(emptySet())
+        private set
+    var tagFilterDialogMatchMode by mutableStateOf(TagMatchMode.ALL)
+        private set
+
+    private val tagFilterScopesFlow = flow {
+        val manga = getMangaAndChapters.awaitManga(mangaId)
+        val source = sourceManager.getOrStub(manga.source)
+        if (source is TagFilterSource) {
+            emit(tagFilterLoader.getScopes(source, manga.toSManga()))
+        } else {
+            emit(emptyList())
+        }
+    }.distinctUntilChanged()
+
+    private val tagFilterFlow = getMangaTagFilter.subscribe(mangaId)
+        .distinctUntilChanged()
+
+    private val tagFilterMatchingUrlsFlow = combine(
+        tagFilterFlow,
+        flow { emit(getMangaAndChapters.awaitManga(mangaId)) },
+    ) { filter, manga -> filter to manga }
+        .flatMapLatest { (filter, manga) ->
+            flow {
+                if (filter == null || filter.tags.isEmpty()) {
+                    emit(null)
+                    return@flow
+                }
+                val source = sourceManager.getOrStub(manga.source)
+                if (source !is TagFilterSource) {
+                    emit(null)
+                    return@flow
+                }
+                val scopes = tagFilterLoader.getScopes(source, manga.toSManga())
+                val scope = scopes.find { it.id == filter.scopeId } ?: scopes.firstOrNull()
+                if (scope == null) {
+                    emit(null)
+                    return@flow
+                }
+                try {
+                    val urls = tagFilterLoader.loadMatchingUrls(
+                        mangaId = mangaId,
+                        source = source,
+                        manga = manga.toSManga(),
+                        scope = scope,
+                        tagNames = filter.tags,
+                        matchMode = filter.matchMode,
+                    )
+                    emit(urls)
+                } catch (e: Exception) {
+                    logcat(LogPriority.ERROR, e) { "Failed to load matching URLs for tag filter" }
+                    emit(null)
+                }
+            }
+        }
+        .distinctUntilChanged()
+
+    private val tagFilterCombined = combine(
+        tagFilterFlow,
+        tagFilterScopesFlow,
+        tagFilterMatchingUrlsFlow,
+        ::Triple,
+    )
+
+    private data class TagFilterUiCombined(
+        val dialog: Dialog?,
+        val isRefreshingData: Boolean,
+        val filter: MangaTagFilter?,
+        val scopes: List<TagScope>,
+        val matchingUrls: Set<String>?,
+    )
+
     val state: StateFlow<State> = combine(
         mangaAndChapters,
         scanlators,
         trackers,
         combine(selectedChapterIds, queuedDownloadStates.pausedWhileUnsubscribed(), ::Pair),
-        combine(dialog, isRefreshingData, ::Pair),
+        combine(dialog, isRefreshingData, tagFilterCombined) { dialog, isRefreshing, (filter, scopes, urls) ->
+            TagFilterUiCombined(dialog, isRefreshing, filter, scopes, urls)
+        },
     ) {
             mangaAndChapters,
             (availableScanlators, excludedScanlators),
             (trackingCount, hasLoggedInTrackers),
             (selectedIds, downloads),
-            (dialog, isRefreshingData),
+            tagFilterUiCombined,
         ->
+        val savedUrls = mangaAndChapters.chapters.mapTo(HashSet()) { it.chapter.url }
+        val unsyncedCount = if (tagFilterUiCombined.matchingUrls != null) {
+            TagFilterLogic.countUnsyncedWorks(tagFilterUiCombined.matchingUrls, savedUrls)
+        } else {
+            0
+        }
+
         State.Success(
             manga = mangaAndChapters.manga,
             source = mangaAndChapters.source,
@@ -279,9 +386,15 @@ class MangaViewModel(
             excludedScanlators = excludedScanlators,
             trackingCount = trackingCount,
             hasLoggedInTrackers = hasLoggedInTrackers,
-            isRefreshingData = isRefreshingData,
-            dialog = dialog,
+            isRefreshingData = tagFilterUiCombined.isRefreshingData,
+            dialog = tagFilterUiCombined.dialog,
             hideMissingChapters = hideMissingChapters,
+            tagFilter = tagFilterUiCombined.filter,
+            tagFilterMatchingUrls = tagFilterUiCombined.matchingUrls,
+            tagFilterScopes = tagFilterUiCombined.scopes,
+            isTagFilterSupported = mangaAndChapters.source is TagFilterSource &&
+                tagFilterUiCombined.scopes.isNotEmpty(),
+            unsyncedTagWorksCount = unsyncedCount,
         )
     }
         // Composition would otherwise build these on first read, on the main thread, for every new state
@@ -1058,6 +1171,9 @@ class MangaViewModel(
         data object SettingsSheet : Dialog
         data object TrackSheet : Dialog
         data object FullCover : Dialog
+
+        // CUSTOM: Tag filter
+        data object TagFilterDialog : Dialog
     }
 
     fun dismissDialog() {
@@ -1078,6 +1194,108 @@ class MangaViewModel(
 
     fun showCoverDialog() {
         dialog.value = Dialog.FullCover
+    }
+
+    // CUSTOM: Tag filter methods
+    fun showTagFilterDialog() {
+        dialog.value = Dialog.TagFilterDialog
+    }
+
+    fun openTagFilterDialog() {
+        val currentFilter = successState?.tagFilter
+        val scopes = successState?.tagFilterScopes.orEmpty()
+        val initialScope = scopes.find { it.id == currentFilter?.scopeId } ?: scopes.firstOrNull()
+
+        tagFilterDialogScopeId = initialScope?.id
+        tagFilterDialogSelectedTags = currentFilter?.tags.orEmpty()
+        tagFilterDialogMatchMode = currentFilter?.matchMode ?: TagMatchMode.ALL
+
+        if (initialScope != null) {
+            loadTagsForScope(initialScope, forceRefresh = false)
+        }
+        showTagFilterDialog()
+    }
+
+    fun selectTagFilterScope(scope: TagScope) {
+        tagFilterDialogScopeId = scope.id
+        loadTagsForScope(scope, forceRefresh = false)
+    }
+
+    fun refreshTagFilterTags() {
+        val scopes = successState?.tagFilterScopes.orEmpty()
+        val scope = scopes.find { it.id == tagFilterDialogScopeId } ?: scopes.firstOrNull() ?: return
+        loadTagsForScope(scope, forceRefresh = true)
+    }
+
+    private var loadTagsJob: kotlinx.coroutines.Job? = null
+
+    private fun loadTagsForScope(scope: TagScope, forceRefresh: Boolean) {
+        val source = successState?.source as? TagFilterSource ?: return
+        val sManga = successState?.manga?.toSManga() ?: return
+
+        loadTagsJob?.cancel()
+        loadTagsJob = viewModelScope.launch {
+            isTagFilterDialogLoading = true
+            tagFilterDialogError = null
+            try {
+                val tags = tagFilterLoader.getTags(mangaId, source, sManga, scope, forceRefresh)
+                tagFilterDialogTags = tags
+            } catch (e: TagLookupException) {
+                tagFilterDialogError = e.reason
+            } catch (_: Exception) {
+                tagFilterDialogError = TagLookupException.Reason.OTHER
+            } finally {
+                isTagFilterDialogLoading = false
+            }
+        }
+    }
+
+    fun toggleTagFilterTag(tagName: String) {
+        tagFilterDialogSelectedTags = if (tagName in tagFilterDialogSelectedTags) {
+            tagFilterDialogSelectedTags - tagName
+        } else {
+            tagFilterDialogSelectedTags + tagName
+        }
+    }
+
+    fun removeTagFilterTag(tagName: String) {
+        tagFilterDialogSelectedTags = tagFilterDialogSelectedTags - tagName
+    }
+
+    fun clearAllTagFilterDialogTags() {
+        tagFilterDialogSelectedTags = emptySet<String>()
+    }
+
+    fun setTagFilterMatchMode(mode: TagMatchMode) {
+        tagFilterDialogMatchMode = mode
+    }
+
+    fun applyTagFilter() {
+        val scopeId = tagFilterDialogScopeId
+        val tags = tagFilterDialogSelectedTags
+        val mode = tagFilterDialogMatchMode
+
+        viewModelScope.launch {
+            if (tags.isEmpty()) {
+                setMangaTagFilter.delete(mangaId)
+            } else {
+                setMangaTagFilter.await(
+                    MangaTagFilter(
+                        mangaId = mangaId,
+                        scopeId = scopeId,
+                        matchMode = mode,
+                        tags = tags,
+                    ),
+                )
+            }
+        }
+        dismissDialog()
+    }
+
+    fun clearTagFilter() {
+        viewModelScope.launch {
+            setMangaTagFilter.delete(mangaId)
+        }
     }
 
     fun showMigrateDialog(duplicate: Manga) {
@@ -1110,6 +1328,12 @@ class MangaViewModel(
             val isRefreshingData: Boolean = false,
             val dialog: Dialog? = null,
             val hideMissingChapters: Boolean = false,
+            // CUSTOM: Tag filter
+            val tagFilter: MangaTagFilter? = null,
+            val tagFilterMatchingUrls: Set<String>? = null,
+            val tagFilterScopes: List<TagScope> = emptyList(),
+            val isTagFilterSupported: Boolean = false,
+            val unsyncedTagWorksCount: Int = 0,
         ) : State {
             val processedChapters by lazy {
                 chapters.applyFilters(manga).toList()
@@ -1170,8 +1394,12 @@ class MangaViewModel(
             val scanlatorFilterActive: Boolean
                 get() = excludedScanlators.intersect(availableScanlators).isNotEmpty()
 
+            // CUSTOM: Tag filter active
+            val tagFilterActive: Boolean
+                get() = tagFilter != null && tagFilter.tags.isNotEmpty()
+
             val filterActive: Boolean
-                get() = scanlatorFilterActive || manga.chaptersFiltered()
+                get() = scanlatorFilterActive || manga.chaptersFiltered() || tagFilterActive
 
             /**
              * Applies the view filters to the list of chapters obtained from the database.
@@ -1187,6 +1415,8 @@ class MangaViewModel(
                     .filter { (chapter) -> applyFilter(unreadFilter) { !chapter.read } }
                     .filter { (chapter) -> applyFilter(bookmarkedFilter) { chapter.bookmark } }
                     .filter { applyFilter(downloadedFilter) { it.isDownloaded || isLocalManga } }
+                    // CUSTOM: Tag filter
+                    .filter { (chapter) -> tagFilterMatchingUrls == null || chapter.url in tagFilterMatchingUrls }
                     .sortedWith { (chapter1), (chapter2) -> chapterSort(chapter1, chapter2) }
             }
         }

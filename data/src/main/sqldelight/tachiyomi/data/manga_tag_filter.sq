@@ -1,0 +1,26 @@
+CREATE TABLE manga_tag_filter(
+    manga_id INTEGER NOT NULL PRIMARY KEY,
+    scope_id TEXT,
+    match_mode TEXT NOT NULL DEFAULT 'ALL',
+    tags TEXT NOT NULL DEFAULT '[]',
+    FOREIGN KEY(manga_id) REFERENCES manga (id)
+    ON DELETE CASCADE
+);
+
+getFilterByMangaId:
+SELECT *
+FROM manga_tag_filter
+WHERE manga_id = :mangaId;
+
+setFilter:
+INSERT INTO manga_tag_filter(manga_id, scope_id, match_mode, tags)
+VALUES (:mangaId, :scopeId, :matchMode, :tags)
+ON CONFLICT(manga_id) DO UPDATE SET
+    scope_id = :scopeId,
+    match_mode = :matchMode,
+    tags = :tags;
+
+deleteFilter:
+DELETE FROM manga_tag_filter
+WHERE manga_id = :mangaId;
+

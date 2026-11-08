@@ -31,6 +31,7 @@ import eu.kanade.presentation.components.TabbedDialog
 import eu.kanade.presentation.components.TabbedDialogPaddings
 import mihon.app.di.appGraph
 import mihon.icons.materialsymbols.MaterialSymbols
+import mihon.icons.materialsymbols.automirroredrounded.Label
 import mihon.icons.materialsymbols.rounded.Group
 import tachiyomi.core.common.preference.TriState
 import tachiyomi.domain.manga.model.Manga
@@ -51,6 +52,11 @@ fun ChapterSettingsDialog(
     onBookmarkedFilterChanged: (TriState) -> Unit,
     scanlatorFilterActive: Boolean,
     onScanlatorFilterClicked: (() -> Unit),
+    // CUSTOM: Tag filter
+    tagFilterVisible: Boolean = false,
+    tagFilterActive: Boolean = false,
+    tagFilterSelectedCount: Int = 0,
+    onTagFilterClicked: (() -> Unit)? = null,
     onSortModeChanged: (Long) -> Unit,
     onDisplayModeChanged: (Long) -> Unit,
     onSetAsDefault: (applyToExistingManga: Boolean) -> Unit,
@@ -108,6 +114,10 @@ fun ChapterSettingsDialog(
                         onBookmarkedFilterChanged = onBookmarkedFilterChanged,
                         scanlatorFilterActive = scanlatorFilterActive,
                         onScanlatorFilterClicked = onScanlatorFilterClicked,
+                        tagFilterVisible = tagFilterVisible,
+                        tagFilterActive = tagFilterActive,
+                        tagFilterSelectedCount = tagFilterSelectedCount,
+                        onTagFilterClicked = onTagFilterClicked,
                     )
                 }
                 1 -> {
@@ -138,6 +148,11 @@ private fun ColumnScope.FilterPage(
     onBookmarkedFilterChanged: (TriState) -> Unit,
     scanlatorFilterActive: Boolean,
     onScanlatorFilterClicked: (() -> Unit),
+    // CUSTOM: Tag filter
+    tagFilterVisible: Boolean = false,
+    tagFilterActive: Boolean = false,
+    tagFilterSelectedCount: Int = 0,
+    onTagFilterClicked: (() -> Unit)? = null,
 ) {
     TriStateItem(
         label = stringResource(MR.strings.label_downloaded),
@@ -158,6 +173,57 @@ private fun ColumnScope.FilterPage(
         active = scanlatorFilterActive,
         onClick = onScanlatorFilterClicked,
     )
+    // CUSTOM: Tag filter
+    if (tagFilterVisible) {
+        TagFilterItem(
+            active = tagFilterActive,
+            selectedCount = tagFilterSelectedCount,
+            onClick = onTagFilterClicked ?: {},
+        )
+    }
+}
+
+// CUSTOM: Tag Filter Item
+@Composable
+fun TagFilterItem(
+    active: Boolean,
+    selectedCount: Int,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .clickable(onClick = onClick)
+            .fillMaxWidth()
+            .padding(horizontal = TabbedDialogPaddings.Horizontal, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(24.dp),
+    ) {
+        Icon(
+            imageVector = MaterialSymbols.AutoMirroredRounded.Label,
+            contentDescription = null,
+            tint = if (active) {
+                MaterialTheme.colorScheme.active
+            } else {
+                LocalContentColor.current
+            },
+        )
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text(
+                text = stringResource(MR.strings.tag_filter_title),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            if (selectedCount > 0) {
+                Text(
+                    text = stringResource(MR.strings.tag_filter_summary, selectedCount),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.active,
+                )
+            }
+        }
+    }
 }
 
 @Composable

@@ -91,3 +91,7 @@
     public <init>();
     public void destroy();
 }
+
+# Tag filter source API contract v1
+-keep class eu.kanade.tachiyomi.source.tagfilter.** { public protected *; }
+-keep class eu.kanade.tachiyomi.source.tagfilter.TagFilterSource$DefaultImpls { public protected *; }

@@ -1,0 +1,9 @@
+CREATE TABLE manga_tag_filter(
+    manga_id INTEGER NOT NULL PRIMARY KEY,
+    scope_id TEXT,
+    match_mode TEXT NOT NULL DEFAULT 'ALL',
+    tags TEXT NOT NULL DEFAULT '[]',
+    FOREIGN KEY(manga_id) REFERENCES manga (id)
+    ON DELETE CASCADE
+);
+
