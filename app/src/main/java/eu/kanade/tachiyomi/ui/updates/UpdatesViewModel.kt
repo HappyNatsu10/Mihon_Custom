@@ -65,6 +65,7 @@ import tachiyomi.domain.updates.model.UpdatesWithRelations
 import tachiyomi.domain.updates.service.UpdatesPreferences
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.Instant
 
 @Inject
 @ViewModelKey
@@ -201,10 +202,16 @@ class UpdatesViewModel(
                         val days = it.filterDateRange.days ?: 90
                         Clock.System.now().minus(days, DateTimeUnit.DAY, TimeZone.currentSystemDefault())
                     }
-                    it.keepFullUpdatesHistory -> null
+                    it.keepFullUpdatesHistory -> Instant.fromEpochMilliseconds(0)
                     else -> Clock.System.now().minus(3, DateTimeUnit.MONTH, TimeZone.currentSystemDefault())
                 }
-                val limit = if (it.keepFullUpdatesHistory && it.filterDateRange == UpdatesDateFilter.ALL) -1L else 500L
+                val limit = if (it.keepFullUpdatesHistory &&
+                    it.filterDateRange == UpdatesDateFilter.ALL
+                ) {
+                    1000L
+                } else {
+                    500L
+                }
 
                 getUpdates.subscribe(
                     after,
@@ -274,7 +281,7 @@ class UpdatesViewModel(
         )
     }
         .flowOn(Dispatchers.Default)
-        .stateIn(viewModelScope + subscriberGate, subscriberGate.whileSubscribed(20.seconds), State())
+        .stateIn(viewModelScope + subscriberGate, subscriberGate.whileSubscribed(5.seconds), State())
 
     private fun List<UpdatesItem>.applyFilters(
         preferences: ItemPreferences,
@@ -332,18 +339,16 @@ class UpdatesViewModel(
         val hasAnyTotalDownloads = downloadCache.getTotalDownloadCount() > 0
 
         return this.map { update ->
-            val downloadStateProvider: () -> Download.State = {
-                val active = queuedDownloads[update.chapterId]
-                when {
-                    active != null -> active.status
-                    !hasAnyTotalDownloads -> Download.State.NOT_DOWNLOADED
-                    isChapterDownloadedFast(update) -> Download.State.DOWNLOADED
-                    else -> Download.State.NOT_DOWNLOADED
-                }
+            val active = queuedDownloads[update.chapterId]
+            val downloadState = when {
+                active != null -> active.status
+                !hasAnyTotalDownloads -> Download.State.NOT_DOWNLOADED
+                isChapterDownloadedFast(update) -> Download.State.DOWNLOADED
+                else -> Download.State.NOT_DOWNLOADED
             }
             UpdatesItem(
                 update = update,
-                downloadStateProvider = downloadStateProvider,
+                downloadStateProvider = { downloadState },
                 downloadProgressProvider = { downloadProgress[update.chapterId] ?: 0 },
             )
         }

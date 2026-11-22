@@ -55,6 +55,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.launch
 import logcat.AndroidLogcatLogger
 import logcat.LogPriority
 import logcat.LogcatLogger
@@ -186,8 +187,10 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
             .onEach(TelemetryConfig::setCrashlyticsEnabled)
             .launchIn(scope)
 
-        basePreferences.hardwareBitmapThreshold.let { preference ->
-            if (!preference.isSet()) preference.set(GLUtil.DEVICE_TEXTURE_LIMIT)
+        scope.launch(Dispatchers.IO) {
+            basePreferences.hardwareBitmapThreshold.let { preference ->
+                if (!preference.isSet()) preference.set(GLUtil.DEVICE_TEXTURE_LIMIT)
+            }
         }
 
         basePreferences.hardwareBitmapThreshold.changes()

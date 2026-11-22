@@ -22,13 +22,15 @@ class UpdatesRepositoryImpl(
     private val database: Database,
 ) : UpdatesRepository {
 
-    // CUSTOM: after is nullable to support full updates history
+    private val epochZero = Instant.fromEpochMilliseconds(0)
+
+    // CUSTOM: after defaults to epochZero (1970) when null so SQLite always uses the dateUpload index seek
     override suspend fun awaitWithRead(
         read: Boolean,
         after: Instant?,
         limit: Long,
     ): List<UpdatesWithRelations> {
-        return getUpdatesByReadStatus(read = read, after = after, limit = limit).awaitAsList()
+        return getUpdatesByReadStatus(read = read, after = after ?: epochZero, limit = limit).awaitAsList()
     }
 
     override fun subscribeAll(
@@ -43,7 +45,7 @@ class UpdatesRepositoryImpl(
     ): Flow<List<UpdatesWithRelations>> {
         return database.updatesViewQueries
             .getRecentUpdatesWithFilters(
-                after = after,
+                after = after ?: epochZero,
                 limit = limit,
                 read = unread?.let { !it },
                 started = started?.toLong(),
@@ -63,19 +65,20 @@ class UpdatesRepositoryImpl(
         after: Instant?,
         limit: Long,
     ): Flow<List<UpdatesWithRelations>> {
-        return getUpdatesByReadStatus(read = read, after = after, limit = limit).subscribeToList()
+        return getUpdatesByReadStatus(read = read, after = after ?: epochZero, limit = limit).subscribeToList()
     }
 
     private fun getUpdatesByReadStatus(read: Boolean, after: Instant?, limit: Long): Query<UpdatesWithRelations> {
+        val nonNullAfter = after ?: epochZero
         return if (read) {
             database.updatesViewQueries.getReadUpdates(
-                after = after,
+                after = nonNullAfter,
                 limit = limit,
                 mapper = ::mapUpdatesWithRelations,
             )
         } else {
             database.updatesViewQueries.getUnreadUpdates(
-                after = after,
+                after = nonNullAfter,
                 limit = limit,
                 mapper = ::mapUpdatesWithRelations,
             )
