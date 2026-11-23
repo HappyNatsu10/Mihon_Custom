@@ -24,7 +24,7 @@ class UpdatesRepositoryImpl(
 
     private val epochZero = Instant.fromEpochMilliseconds(0)
 
-    // CUSTOM: after defaults to epochZero (1970) when null so SQLite always uses the dateUpload index seek
+    // CUSTOM: after defaults to epochZero (1970) when null so SQLite always uses the state_date_fetch index seek
     override suspend fun awaitWithRead(
         read: Boolean,
         after: Instant?,

@@ -80,6 +80,7 @@ data object UpdatesTab : Tab {
             hasActiveFilters = state.hasActiveFilters,
             onToggleExpand = viewModel::toggleExpandGroup,
             onGroupSelected = viewModel::toggleGroupSelection,
+            onLoadMore = viewModel::loadMore,
         )
 
         val onDismissDialog = { viewModel.setDialog(null) }

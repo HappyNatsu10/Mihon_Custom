@@ -11,6 +11,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -65,6 +66,7 @@ fun UpdateScreen(
     hasActiveFilters: Boolean,
     onToggleExpand: (String) -> Unit = {},
     onGroupSelected: (List<UpdatesItem>, Boolean) -> Unit = { _, _ -> },
+    onLoadMore: () -> Unit = {},
 ) {
     BackHandler(enabled = state.selectionMode) {
         onSelectAll(false)
@@ -116,7 +118,14 @@ fun UpdateScreen(
                     enabled = !state.selectionMode,
                     indicatorPadding = contentPadding,
                 ) {
-                    if (state.items.isEmpty()) {
+                    if (state.items.isEmpty() && state.hasMore) {
+                        LaunchedEffect(state.loadedCount, state.isLoadingMore) {
+                            if (!state.isLoadingMore) {
+                                onLoadMore()
+                            }
+                        }
+                        LoadingScreen(Modifier.padding(contentPadding))
+                    } else if (state.items.isEmpty()) {
                         Column(
                             modifier = Modifier
                                 .padding(contentPadding)
@@ -148,6 +157,14 @@ fun UpdateScreen(
                                 onToggleExpand = onToggleExpand,
                                 onGroupSelected = onGroupSelected,
                             )
+
+                            if (state.hasMore) {
+                                updatesLoadMoreItem(
+                                    loadedCount = state.loadedCount,
+                                    isLoadingMore = state.isLoadingMore,
+                                    onLoadMore = onLoadMore,
+                                )
+                            }
                         }
                     }
                 }

@@ -192,37 +192,48 @@ class UpdatesViewModel(
 
     private val expandedGroupKeys = MutableStateFlow(emptySet<String>())
 
+    // CUSTOM: Incremental pagination so 3+ months (or full history) can always be loaded without upfront RAM bloat
+    private val currentLimit = MutableStateFlow(PAGE_SIZE)
+    private val isLoadingMore = MutableStateFlow(false)
+
+    private val sqlQueryPreferencesFlow = itemPreferencesFlow
+        .distinctUntilChanged { old, new ->
+            old.filterUnread == new.filterUnread &&
+                old.filterStarted == new.filterStarted &&
+                old.filterBookmarked == new.filterBookmarked &&
+                old.filterExcludedScanlators == new.filterExcludedScanlators &&
+                old.filterIncludedCategories == new.filterIncludedCategories &&
+                old.filterExcludedCategories == new.filterExcludedCategories &&
+                old.keepFullUpdatesHistory == new.keepFullUpdatesHistory &&
+                old.filterDateRange == new.filterDateRange
+        }
+
     private val updateItems = combine(
         // needed for SQL filters (unread, started, bookmarked, etc)
-        itemPreferencesFlow
-            .flatMapLatest {
-                // CUSTOM: Feature A & Date Filter
-                val after = when {
-                    it.filterDateRange != UpdatesDateFilter.ALL -> {
-                        val days = it.filterDateRange.days ?: 90
-                        Clock.System.now().minus(days, DateTimeUnit.DAY, TimeZone.currentSystemDefault())
-                    }
-                    it.keepFullUpdatesHistory -> Instant.fromEpochMilliseconds(0)
-                    else -> Clock.System.now().minus(3, DateTimeUnit.MONTH, TimeZone.currentSystemDefault())
-                }
-                val limit = if (it.keepFullUpdatesHistory &&
-                    it.filterDateRange == UpdatesDateFilter.ALL
-                ) {
-                    1000L
-                } else {
-                    500L
-                }
+        sqlQueryPreferencesFlow
+            .flatMapLatest { prefs ->
+                currentLimit.value = PAGE_SIZE
+                isLoadingMore.value = false
+                // CUSTOM: Filter by user's update time (dateFetch), guaranteeing at least 3 months ago
+                val after = computeUpdatesAfterCutoff(
+                    filterDateRange = prefs.filterDateRange,
+                    keepFullUpdatesHistory = prefs.keepFullUpdatesHistory,
+                )
 
-                getUpdates.subscribe(
-                    after,
-                    limit = limit,
-                    unread = it.filterUnread.toBooleanOrNull(),
-                    started = it.filterStarted.toBooleanOrNull(),
-                    bookmarked = it.filterBookmarked.toBooleanOrNull(),
-                    hideExcludedScanlators = it.filterExcludedScanlators,
-                    includedCategories = it.filterIncludedCategories,
-                    excludedCategories = it.filterExcludedCategories,
-                ).distinctUntilChanged()
+                currentLimit.flatMapLatest { limit ->
+                    getUpdates.subscribe(
+                        after,
+                        limit = limit,
+                        unread = prefs.filterUnread.toBooleanOrNull(),
+                        started = prefs.filterStarted.toBooleanOrNull(),
+                        bookmarked = prefs.filterBookmarked.toBooleanOrNull(),
+                        hideExcludedScanlators = prefs.filterExcludedScanlators,
+                        includedCategories = prefs.filterIncludedCategories,
+                        excludedCategories = prefs.filterExcludedCategories,
+                    )
+                        .distinctUntilChanged()
+                        .map { updates -> updates to limit }
+                }
             },
         downloadCache.changes.pausedWhileUnsubscribed(),
         downloadManager.queueState.pausedWhileUnsubscribed(),
@@ -230,10 +241,17 @@ class UpdatesViewModel(
         itemPreferencesFlow.distinctUntilChanged { old, new ->
             old.filterDownloaded == new.filterDownloaded
         },
-    ) { updates, _, _, itemPreferences ->
-        updates
+    ) { (updates, limit), _, _, itemPreferences ->
+        val filtered = updates
             .toUpdateItems()
             .applyFilters(itemPreferences)
+        val hasMore = updates.size >= limit
+        isLoadingMore.value = false
+        UpdatesPage(
+            items = filtered,
+            rawCount = updates.size,
+            hasMore = hasMore,
+        )
     }
         .flowOn(Dispatchers.Default)
         .stateIn(viewModelScope + subscriberGate, SharingStarted.Eagerly, null)
@@ -242,9 +260,10 @@ class UpdatesViewModel(
         updateItems,
         selectedChapterIds,
         queuedDownloadStates.pausedWhileUnsubscribed(),
-        dialog,
+        combine(dialog, isLoadingMore, ::Pair),
         combine(hasActiveFilters, itemPreferencesFlow, expandedGroupKeys, ::Triple),
-    ) { items, selectedIds, downloads, dialog, (hasActiveFilters, itemPreferences, expandedKeys) ->
+    ) { page, selectedIds, downloads, (dialog, loadingMore), (hasActiveFilters, itemPreferences, expandedKeys) ->
+        val items = page?.items
         val mappedItems = if (selectedIds.isEmpty() && downloads.isEmpty()) {
             items.orEmpty()
         } else {
@@ -271,45 +290,38 @@ class UpdatesViewModel(
             expandedGroupKeys = expandedKeys,
         )
         State(
-            isLoading = items == null,
+            isLoading = page == null,
             hasActiveFilters = hasActiveFilters,
             items = mappedItems,
             uiModels = uiModels,
             dialog = dialog,
             groupUpdatesByManga = itemPreferences.groupUpdatesByManga,
             expandedGroupKeys = expandedKeys,
+            hasMore = page?.hasMore == true,
+            isLoadingMore = loadingMore,
+            loadedCount = page?.rawCount ?: 0,
         )
     }
         .flowOn(Dispatchers.Default)
         .stateIn(viewModelScope + subscriberGate, subscriberGate.whileSubscribed(5.seconds), State())
 
+    fun loadMore() {
+        val current = state.value
+        if (!current.hasMore || current.isLoadingMore) return
+        isLoadingMore.value = true
+        currentLimit.update { it + PAGE_SIZE }
+    }
+
     private fun List<UpdatesItem>.applyFilters(
         preferences: ItemPreferences,
     ): List<UpdatesItem> {
         val filterDownloaded = preferences.filterDownloaded
-        val filterDateRange = preferences.filterDateRange
-        val dateCutoff = if (filterDateRange != UpdatesDateFilter.ALL) {
-            val days = filterDateRange.days ?: 90
-            Clock.System.now().minus(days, DateTimeUnit.DAY, TimeZone.currentSystemDefault())
-        } else {
-            null
-        }
+        if (filterDownloaded == TriState.DISABLED) return this
 
-        val filterFnDownloaded: (UpdatesItem) -> Boolean = {
+        return fastFilter {
             applyFilter(filterDownloaded) {
                 it.downloadStateProvider() == Download.State.DOWNLOADED
             }
-        }
-        val filterFnDate: (UpdatesItem) -> Boolean = { item ->
-            if (dateCutoff != null) {
-                item.update.dateFetch >= dateCutoff
-            } else {
-                true
-            }
-        }
-
-        return fastFilter {
-            filterFnDownloaded(it) && filterFnDate(it)
         }
     }
 
@@ -618,6 +630,13 @@ class UpdatesViewModel(
     )
 
     @Immutable
+    private data class UpdatesPage(
+        val items: List<UpdatesItem>,
+        val rawCount: Int,
+        val hasMore: Boolean,
+    )
+
+    @Immutable
     data class State(
         val isLoading: Boolean = true,
         val hasActiveFilters: Boolean = false,
@@ -626,6 +645,9 @@ class UpdatesViewModel(
         val dialog: Dialog? = null,
         val groupUpdatesByManga: Boolean = true,
         val expandedGroupKeys: Set<String> = emptySet(),
+        val hasMore: Boolean = false,
+        val isLoadingMore: Boolean = false,
+        val loadedCount: Int = 0,
     ) {
         val selected = items.filter { it.selected }
         val selectionMode = selected.isNotEmpty()
@@ -641,6 +663,29 @@ class UpdatesViewModel(
     sealed interface Event {
         data object InternalError : Event
         data class LibraryUpdateTriggered(val started: Boolean) : Event
+    }
+
+    companion object {
+        internal const val PAGE_SIZE = 1000L
+    }
+}
+
+internal fun computeUpdatesAfterCutoff(
+    filterDateRange: UpdatesDateFilter,
+    keepFullUpdatesHistory: Boolean,
+    now: Instant = Clock.System.now(),
+    timeZone: TimeZone = TimeZone.currentSystemDefault(),
+): Instant {
+    return when {
+        filterDateRange == UpdatesDateFilter.LAST_3_MONTHS -> {
+            now.minus(3, DateTimeUnit.MONTH, timeZone)
+        }
+        filterDateRange != UpdatesDateFilter.ALL -> {
+            val days = filterDateRange.days ?: 90
+            now.minus(days, DateTimeUnit.DAY, timeZone)
+        }
+        keepFullUpdatesHistory -> Instant.fromEpochMilliseconds(0)
+        else -> now.minus(3, DateTimeUnit.MONTH, timeZone)
     }
 }
 

@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -14,12 +15,15 @@ import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -179,6 +183,37 @@ internal fun LazyListScope.updatesUiItems(
                     downloadStateProvider = updatesItem.downloadStateProvider,
                     downloadProgressProvider = updatesItem.downloadProgressProvider,
                 )
+            }
+        }
+    }
+}
+
+internal fun LazyListScope.updatesLoadMoreItem(
+    loadedCount: Int,
+    isLoadingMore: Boolean,
+    onLoadMore: () -> Unit,
+) {
+    item(key = "updates-load-more") {
+        LaunchedEffect(loadedCount, isLoadingMore) {
+            if (!isLoadingMore) {
+                onLoadMore()
+            }
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = MaterialTheme.padding.medium),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (isLoadingMore) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(24.dp),
+                    strokeWidth = 2.dp,
+                )
+            } else {
+                TextButton(onClick = onLoadMore) {
+                    Text(text = "Load older updates")
+                }
             }
         }
     }
