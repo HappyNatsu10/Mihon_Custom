@@ -69,6 +69,13 @@
 -keepclasseswithmembers class eu.kanade.** {
     kotlinx.serialization.KSerializer serializer(...);
 }
+-keep,includedescriptorclasses class mihon.**$$serializer { *; }
+-keepclassmembers class mihon.** {
+    *** Companion;
+}
+-keepclasseswithmembers class mihon.** {
+    kotlinx.serialization.KSerializer serializer(...);
+}
 
 -keep class kotlinx.serialization.**
 -keepclassmembers class kotlinx.serialization.** {
@@ -95,3 +102,10 @@
 # Tag filter source API contract v1
 -keep class eu.kanade.tachiyomi.source.tagfilter.** { public protected *; }
 -keep class eu.kanade.tachiyomi.source.tagfilter.TagFilterSource$DefaultImpls { public protected *; }
+
+# ML Kit OCR & Translation (R8 full mode strips ComponentRegistrar <init>() and reflective ML Kit internals)
+-keep class * implements com.google.firebase.components.ComponentRegistrar { *; }
+-keep class com.google.mlkit.** { *; }
+-keep class com.google.android.gms.dynamite.descriptors.com.google.mlkit.** { *; }
+-keep class com.google.android.gms.internal.mlkit_vision_text_bundled_common.** { *; }
+-keep class com.google.android.libraries.vision.visionkit.pipeline.** { *; }
